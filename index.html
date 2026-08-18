@@ -948,8 +948,8 @@ function renderResponsaveis(v){
   const porPessoa = p => i=>i.pessoas.includes(p);
   v.innerHTML=`
   <div class="aviso" style="margin-bottom:14px"><b>Modelo de time da Central:</b> cada cliente tem 1 CS e 1 gestor de tráfego; a Automação cobre o que na Burst é o dev; design é GT + IA de imagem (time compartilhado). Os admins têm visão geral de todos os clientes. Contadores respeitam os filtros do topo.</div>
-  ${grupo('Admin','⚙',[card('Pietro','Admin · exceções','var(--roxo)',conta(porPessoa('Pietro'))),card('Adão','Admin · dono da implantação','var(--laranja)',conta(porPessoa('Adão')))])}
-  ${grupo('Sucesso do Cliente','☺',[card('Adão','Sucesso do Cliente (interino)','var(--laranja)',conta(porPessoa('Adão')))])}
+  ${grupo('Admin','⚙',[card('Pietro','Admin · exceções','var(--roxo)',conta(porPessoa('Pietro'))),card('Marcos','Admin · sócio','var(--azul)',conta(porPessoa('Marcos')))])}
+  ${grupo('Sucesso do Cliente','☺',[card('Adão','Sucesso do Cliente · dono da implantação','var(--laranja)',conta(porPessoa('Adão')))])}
   ${grupo('Gestores de Tráfego','◉',[card('Gestora','Gestor de Tráfego','var(--azul)',conta(porPessoa('Gestora')))])}
   ${grupo('Automação','⚡',[card('Automação','IA / cron da casa','var(--verde)',conta(porPessoa('Automação')))])}
   ${grupo('Lado do cliente','🏥',[card('Cliente','decisor da clínica','var(--amarelo)',conta(porPessoa('Cliente'))),card('CRC da clínica','crava no PMS','var(--amarelo)',conta(porPessoa('CRC da clínica')))])}`;
