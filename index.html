@@ -706,9 +706,10 @@ function blocoAgendaPessoal(){
     return `<div class="box" style="max-width:680px;margin-top:14px"><h2>▤ Minha agenda Google</h2>
     <div class="mnote">Conexão direta por OAuth ainda não configurada (GCAL_CLIENT_ID vazio — [DEFINIR: criar OAuth Client no GCP, ver setup.md]). Por ora, assine a agenda compartilhada "Central · ${esc(nomeAgenda)}" criada pelo sync do Apps Script (peça o convite pro Pietro).</div></div>`;
   }
+  const jaConectou = localStorage.getItem('hk_gcal_ok')==='1';
   return `<div class="box" style="max-width:680px;margin-top:14px"><h2>▤ Minha agenda Google</h2>
-  <div class="mnote" style="margin-bottom:8px">Conecte sua agenda pessoal do Google. As atividades do seu cargo (já filtradas pelo servidor) viram eventos de dia inteiro, sem duplicar.</div>
-  <button class="btn" id="gcal-conectar">Conectar minha agenda</button>
+  <div class="mnote" style="margin-bottom:8px">Conecte sua agenda pessoal do Google. As atividades do seu cargo (já filtradas pelo servidor) viram eventos de dia inteiro no SEU Google Calendar, sem duplicar. A conexão é individual (1 por usuário) e o Google pede reconexão de tempos em tempos.</div>
+  <button class="btn" id="gcal-conectar">${jaConectou?'Reconectar minha agenda':'Conectar minha agenda'}</button>
   <button class="btn sec" id="gcal-sync" style="display:none;margin-left:8px">Sincronizar minhas atividades</button>
   <div class="mnote" id="gcal-status" style="margin-top:8px"></div></div>`;
 }
@@ -721,7 +722,10 @@ function initGcalBotoes(){
       callback:(resp)=>{
         if(resp.error){ document.getElementById('gcal-status').textContent='Erro: '+resp.error; return; }
         GCAL_TOKEN = resp.access_token;
-        document.getElementById('gcal-status').textContent='✓ conectado';
+        localStorage.setItem('hk_gcal_ok','1');
+        bConn.textContent='✓ Agenda conectada';
+        bConn.classList.add('sec');
+        document.getElementById('gcal-status').textContent='✓ conectado — clique em "Sincronizar minhas atividades"';
         document.getElementById('gcal-sync').style.display='inline-block';
       }
     });
@@ -737,17 +741,18 @@ async function sincronizarAgendaPessoal(){
   const itens = D.clientes.flatMap(c=>todosItens(c).filter(i=>i.prev).map(i=>({...i,c_nome:c.nome})))
     .filter(i=>{const d=dt(i.prev); return d>=hoje && d<=fim;});
   try{
-    const listUrl='https://www.googleapis.com/calendar/v3/events?privateExtendedProperty=central%3D1&timeMin='+hoje.toISOString()+'&timeMax='+fim.toISOString()+'&maxResults=2500';
+    const listUrl='https://www.googleapis.com/calendar/v3/calendars/primary/events?privateExtendedProperty=central%3D1&timeMin='+hoje.toISOString()+'&timeMax='+fim.toISOString()+'&maxResults=2500';
     const rl = await fetch(listUrl,{headers:{Authorization:'Bearer '+GCAL_TOKEN}});
+    if(!rl.ok) throw new Error('listar eventos: HTTP '+rl.status);
     const jl = await rl.json();
-    for(const ev of (jl.items||[])) await fetch('https://www.googleapis.com/calendar/v3/events/'+ev.id,{method:'DELETE',headers:{Authorization:'Bearer '+GCAL_TOKEN}});
+    for(const ev of (jl.items||[])) await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+ev.id,{method:'DELETE',headers:{Authorization:'Bearer '+GCAL_TOKEN}});
     let n=0;
     for(const i of itens){
       // all-day: end.date é EXCLUSIVO na API do Google — precisa ser o dia seguinte
       const dFim=new Date(i.prev+'T12:00:00'); dFim.setDate(dFim.getDate()+1);
       const fimISO=`${dFim.getFullYear()}-${String(dFim.getMonth()+1).padStart(2,'0')}-${String(dFim.getDate()).padStart(2,'0')}`;
       const body={ summary:(i.tipo==='QW'?'★ ':'')+'['+i.c_nome+'] '+i.ativ, start:{date:i.prev}, end:{date:fimISO}, extendedProperties:{private:{central:'1'}} };
-      const rr=await fetch('https://www.googleapis.com/calendar/v3/events',{method:'POST',headers:{Authorization:'Bearer '+GCAL_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const rr=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events',{method:'POST',headers:{Authorization:'Bearer '+GCAL_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body)});
       if(rr.ok) n++;
     }
     st.textContent='✓ '+n+' evento(s) sincronizado(s)';
