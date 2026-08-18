@@ -26,7 +26,15 @@ body{background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,'Segoe 
 a{color:inherit;text-decoration:none}
 .app{display:flex;min-height:100vh}
 /* sidebar */
-.side{width:218px;background:var(--panel);border-right:1px solid var(--border);padding:16px 12px;flex-shrink:0}
+.side{width:218px;background:var(--panel);border-right:1px solid var(--border);padding:16px 12px;flex-shrink:0;overflow-x:hidden;transition:width .2s ease,padding .2s ease}
+.side-toggle{display:none}
+@media(min-width:761px){
+  .side{position:sticky;top:0;height:100vh;overflow-y:auto}
+  html.side-fechada .side{width:0;padding:0;border-right-color:transparent}
+  .side-toggle{display:flex;align-items:center;justify-content:center;position:fixed;top:20px;left:218px;transform:translate(-50%,0);width:22px;height:22px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);color:var(--muted);font-size:12px;line-height:1;cursor:pointer;z-index:25;transition:left .2s ease,color .15s ease}
+  .side-toggle:hover{color:var(--text)}
+  html.side-fechada .side-toggle{left:0;border-radius:0 6px 6px 0}
+}
 .brand{display:flex;gap:10px;align-items:center;margin-bottom:22px;padding:0 6px}
 .brand .logo{width:34px;height:34px;border-radius:8px;background:#000;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--laranja)}
 .brand b{display:block;font-size:13.5px}.brand span{font-size:11px;color:var(--muted)}
@@ -267,6 +275,7 @@ th{color:var(--faint);font-weight:600;font-size:10px;letter-spacing:.08em;text-t
 </style>
 </head>
 <body>
+<script>if(localStorage.getItem('hk_side_fechada')==='1')document.documentElement.classList.add('side-fechada');</script>
 <div class="app">
   <aside class="side">
     <div class="brand"><div class="logo">H</div><div><b>Central de Projetos</b><span>Hawki</span></div></div>
@@ -288,6 +297,7 @@ th{color:var(--faint);font-weight:600;font-size:10px;letter-spacing:.08em;text-t
       <div class="nitem" data-v="usuarios" id="nav-usuarios" style="display:none">👥 Usuários</div>
     </div>
   </aside>
+  <button class="side-toggle" id="side-toggle" type="button" title="Recolher menu" aria-label="Recolher menu">‹</button>
 
   <div class="main">
     <div class="topbar">
@@ -523,6 +533,18 @@ const sb = (MODO_APP && typeof window!=='undefined' && window.supabase)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 let SESSAO = null, PERFIL = null;
 const CARGO_LABEL = {admin:'Admin',cs:'Sucesso do Cliente',gt:'Gestor de Tráfego',automacao:'Automação'};
+// cache dos perfis registrados (tela Usuários e tela Responsáveis usam a
+// mesma busca/headers — via supabase-js — pra não duplicar mecanismo nem
+// bater na API toda hora que o filtro do topo muda e Responsáveis re-renderiza)
+let PERFIS_CACHE = null;
+async function carregaPerfis(forcar){
+  if(!sb) return [];
+  if(PERFIS_CACHE && !forcar) return PERFIS_CACHE;
+  const {data,error} = await sb.from('profiles').select('*').order('criado_em',{ascending:false});
+  if(error){ console.error('carregaPerfis:', error.message); return PERFIS_CACHE||[]; }
+  PERFIS_CACHE = data||[];
+  return PERFIS_CACHE;
+}
 
 function telaBoot(html){
   const app=document.querySelector('.app'); if(app) app.style.display='none';
@@ -659,6 +681,7 @@ async function renderUsuarios(v){
   const {data,error} = await sb.from('profiles').select('*').order('criado_em',{ascending:false});
   const tb=document.getElementById('us-tabela');
   if(error){ tb.innerHTML='Erro: '+esc(error.message); return; }
+  PERFIS_CACHE = data; // Responsáveis reaproveita esta busca sem bater na API de novo
   document.getElementById('us-count').textContent = data.length;
   const cargos=['admin','cs','gt','automacao'];
   tb.innerHTML=`<table><tr><th>Nome</th><th>Email</th><th>Cargo</th><th>Status</th><th>Criado</th><th></th></tr>${
@@ -675,7 +698,7 @@ async function renderUsuarios(v){
 }
 
 // ---------- Minha agenda Google (shell OAuth por usuário) ----------
-const GCAL_CLIENT_ID = ''; // [DEFINIR: criar OAuth Client no GCP — doc no setup.md]
+const GCAL_CLIENT_ID = '414967115794-4gmlgvclr8j7fjj8ladtanu1ffa1np98.apps.googleusercontent.com'; // projeto GCP "Central Hawki" (quick-doodad-505915-v7), consent externo em modo teste
 let GCAL_TOKEN = null;
 function blocoAgendaPessoal(){
   const nomeAgenda = PERFIL? (PERFIL.nome||PERFIL.email) : 'você';
@@ -878,6 +901,24 @@ const TITULOS={dashboard:['Visão geral','Dashboard'],clientes:['Clientes','List
 document.querySelectorAll('.nitem').forEach(n=>n.onclick=()=>{VIEW=n.dataset.v;CLI=null;render();});
 function vaiCliente(aba){ VIEW='clientes'; CLI=aba; ABA_CLI='etapas'; render(); window.scrollTo(0,0); }
 
+// ---- sidebar recolhível (desktop) ----
+function syncSideToggle(){
+  const btn = document.getElementById('side-toggle');
+  if(!btn) return;
+  const fechada = document.documentElement.classList.contains('side-fechada');
+  btn.textContent = fechada ? '›' : '‹';
+  btn.title = fechada ? 'Expandir menu' : 'Recolher menu';
+  btn.setAttribute('aria-label', btn.title);
+}
+function toggleSide(){
+  const fechada = document.documentElement.classList.toggle('side-fechada');
+  localStorage.setItem('hk_side_fechada', fechada ? '1' : '0');
+  syncSideToggle();
+}
+const sideToggleBtn = document.getElementById('side-toggle');
+if(sideToggleBtn) sideToggleBtn.onclick = toggleSide;
+syncSideToggle();
+
 function render(){
   if(!D) return;
   if(MODO_APP && PERFIL && PERFIL.cargo!=='admin' && (VIEW==='responsaveis'||VIEW==='usuarios')) VIEW='dashboard';
@@ -927,6 +968,13 @@ function renderCelebracoes(v){
 }
 
 // ---------- RESPONSÁVEIS (equipe por cargo) ----------
+// Modo local: cards fixos (fallback, sem login). Modo app: cards só de quem
+// já se registrou e foi aprovado (tela Usuários) — reaproveita a mesma busca
+// 'profiles' via carregaPerfis(), pra não ter dois mecanismos de listar gente.
+const CARGO_PAPEL_RESP = {admin:'Pietro', cs:'Adão', gt:'Gestora', automacao:'Automação'};
+const CARGO_GRUPO_RESP = {admin:'Admin', cs:'Sucesso do Cliente', gt:'Gestores de Tráfego', automacao:'Automação'};
+const CARGO_ICONE_RESP = {admin:'⚙', cs:'☺', gt:'◉', automacao:'⚡'};
+const CARGO_COR1_RESP  = {admin:'var(--roxo)', cs:'var(--laranja)', gt:'var(--azul)', automacao:'var(--verde)'};
 function renderResponsaveis(v){
   const its = clientesF().flatMap(c=>itensDe(c).map(i=>({c,...i})));
   const conta = filtro => {
@@ -945,14 +993,40 @@ function renderResponsaveis(v){
       <div><b style="display:block;font-size:19px;color:var(--azul)">${n.ant}</b>antes</div></div></div>`;
   const grupo=(t,icone,cards)=>`<div class="box" style="margin-bottom:14px"><h2>${icone} ${t} <span class="bdg">${cards.length} pessoa${cards.length>1?'s':''}</span></h2>
     <div style="display:flex;gap:10px;flex-wrap:wrap">${cards.join('')}</div></div>`;
+  const grupoVazio=(t,icone)=>`<div class="box" style="margin-bottom:14px"><h2>${icone} ${t} <span class="bdg">0 pessoas</span></h2>
+    <div class="mnote">nenhum usuário cadastrado ainda — cada pessoa cria conta na tela de login e um admin aprova</div></div>`;
   const porPessoa = p => i=>i.pessoas.includes(p);
-  v.innerHTML=`
-  <div class="aviso" style="margin-bottom:14px"><b>Modelo de time da Central:</b> cada cliente tem 1 CS e 1 gestor de tráfego; a Automação cobre o que na Burst é o dev; design é GT + IA de imagem (time compartilhado). Os admins têm visão geral de todos os clientes. Contadores respeitam os filtros do topo.</div>
-  ${grupo('Admin','⚙',[card('Pietro','Admin · exceções','var(--roxo)',conta(porPessoa('Pietro'))),card('Marcos','Admin · sócio','var(--azul)',conta(porPessoa('Marcos')))])}
-  ${grupo('Sucesso do Cliente','☺',[card('Adão','Sucesso do Cliente · dono da implantação','var(--laranja)',conta(porPessoa('Adão')))])}
-  ${grupo('Gestores de Tráfego','◉',[card('Gestora','Gestor de Tráfego','var(--azul)',conta(porPessoa('Gestora')))])}
-  ${grupo('Automação','⚡',[card('Automação','IA / cron da casa','var(--verde)',conta(porPessoa('Automação')))])}
-  ${grupo('Lado do cliente','🏥',[card('Cliente','decisor da clínica','var(--amarelo)',conta(porPessoa('Cliente'))),card('CRC da clínica','crava no PMS','var(--amarelo)',conta(porPessoa('CRC da clínica')))])}`;
+  const grupoCliente = grupo('Lado do cliente','🏥',[card('Cliente','decisor da clínica','var(--amarelo)',conta(porPessoa('Cliente'))),card('CRC da clínica','crava no PMS','var(--amarelo)',conta(porPessoa('CRC da clínica')))]);
+
+  if(!MODO_APP){
+    v.innerHTML=`
+    <div class="aviso" style="margin-bottom:14px"><b>Modelo de time da Central:</b> cada cliente tem 1 CS e 1 gestor de tráfego; a Automação cobre o que na Burst é o dev; design é GT + IA de imagem (time compartilhado). Os admins têm visão geral de todos os clientes. Contadores respeitam os filtros do topo.</div>
+    ${grupo('Admin','⚙',[card('Pietro','Admin · exceções','var(--roxo)',conta(porPessoa('Pietro'))),card('Marcos','Admin · sócio','var(--azul)',conta(porPessoa('Marcos')))])}
+    ${grupo('Sucesso do Cliente','☺',[card('Adão','Sucesso do Cliente · dono da implantação','var(--laranja)',conta(porPessoa('Adão')))])}
+    ${grupo('Gestores de Tráfego','◉',[card('Gestora','Gestor de Tráfego','var(--azul)',conta(porPessoa('Gestora')))])}
+    ${grupo('Automação','⚡',[card('Automação','IA / cron da casa','var(--verde)',conta(porPessoa('Automação')))])}
+    ${grupoCliente}`;
+    return;
+  }
+
+  // MODO_APP: só gente que já se registrou e foi aprovada por um admin.
+  const aviso = `<div class="aviso" style="margin-bottom:14px"><b>Time por usuário cadastrado:</b> cada card abaixo é uma conta que já criou login e foi aprovada (tela Usuários). Ninguém aparece antes de se registrar. Contadores respeitam os filtros do topo e usam o papel que aquele cargo enxerga na planilha.</div>`;
+  v.innerHTML = aviso + `<div class="mnote" style="margin-bottom:10px">Carregando usuários…</div>` + grupoCliente;
+  carregaPerfis().then(perfis=>{
+    if(VIEW!=='responsaveis') return; // já navegou pra outra tela — não pisa no DOM
+    const aprovados = (perfis||[]).filter(p=>p.aprovado);
+    const gruposHtml = ['admin','cs','gt','automacao'].map(cargo=>{
+      const doCargo = aprovados.filter(p=>p.cargo===cargo);
+      if(!doCargo.length) return grupoVazio(CARGO_GRUPO_RESP[cargo], CARGO_ICONE_RESP[cargo]);
+      const cards = doCargo.map((p,ix)=>{
+        const nome = p.nome || (p.email? p.email.split('@')[0] : '—');
+        const cor = ix===0 ? CARGO_COR1_RESP[cargo] : 'var(--azul)';
+        return card(nome, CARGO_LABEL[cargo]||cargo, cor, conta(porPessoa(CARGO_PAPEL_RESP[cargo])));
+      });
+      return grupo(CARGO_GRUPO_RESP[cargo], CARGO_ICONE_RESP[cargo], cards);
+    }).join('');
+    v.innerHTML = aviso + gruposHtml + grupoCliente;
+  });
 }
 
 // ---------- MODELO DE PRAZOS (a base das automações) ----------
