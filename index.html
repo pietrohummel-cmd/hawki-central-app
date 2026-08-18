@@ -1,3 +1,1401 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Central de Projetos Hawki</title>
-<style>body{background:#0b0e14;color:#e8ecf3;font:15px -apple-system,'Segoe UI',sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center}div{text-align:center}b{color:#ff8c42}</style>
-</head><body><div><h1>🏗️ Central de Projetos <b>Hawki</b></h1><p>Implantação em andamento. O app entra no ar em breve.</p></div></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Central de Projetos — Hawki</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+:root{
+  --bg:#0b0e14; --panel:#12161f; --panel2:#171c27; --card:#161b26; --border:#242b38;
+  --text:#e8ecf3; --muted:#8b93a3; --faint:#5d6575;
+  --laranja:#ff8c42; --laranja2:#f0883e; --vermelho:#f85149; --amarelo:#e3b341;
+  --verde:#3fb950; --azul:#58a6ff; --rosa:#ec6547; --roxo:#bc8cff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,'Segoe UI',Roboto,sans-serif}
+a{color:inherit;text-decoration:none}
+.app{display:flex;min-height:100vh}
+/* sidebar */
+.side{width:218px;background:var(--panel);border-right:1px solid var(--border);padding:16px 12px;flex-shrink:0}
+.brand{display:flex;gap:10px;align-items:center;margin-bottom:22px;padding:0 6px}
+.brand .logo{width:34px;height:34px;border-radius:8px;background:#000;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--laranja)}
+.brand b{display:block;font-size:13.5px}.brand span{font-size:11px;color:var(--muted)}
+.ngroup{margin-bottom:16px}
+.ngroup .glbl{font-size:10px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase;padding:0 8px;margin-bottom:5px}
+.nitem{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:8px;color:var(--muted);font-size:13.5px;cursor:pointer;margin-bottom:1px}
+.nitem:hover{background:var(--panel2);color:var(--text)}
+.nitem.on{background:rgba(255,140,66,.12);color:var(--laranja)}
+.nitem .bdg{margin-left:auto;font-size:11px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:0 6px;color:var(--muted)}
+/* topbar */
+.main{flex:1;min-width:0;padding-bottom:40px}
+.topbar{display:flex;align-items:center;gap:12px;padding:12px 22px;border-bottom:1px solid var(--border);flex-wrap:wrap;position:sticky;top:0;background:var(--bg);z-index:20}
+.crumb small{display:block;font-size:10px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase}
+.crumb b{font-size:15px}
+.perfil{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--border);border-radius:999px;padding:4px 12px 4px 4px;font-size:12px;color:var(--muted)}
+.avatar{width:24px;height:24px;border-radius:50%;background:var(--laranja);color:#000;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+.filtros{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+select,input,textarea{background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 10px;font-size:13px;font-family:inherit}
+select:focus,input:focus,textarea:focus{outline:1px solid var(--laranja)}
+.btn{background:var(--laranja);color:#1a1006;font-weight:600;border:none;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer}
+.btn.sec{background:var(--panel);color:var(--text);border:1px solid var(--border)}
+.btn.danger{background:rgba(248,81,73,.15);color:var(--vermelho);border:1px solid var(--vermelho)}
+.conteudo{padding:18px 22px;max-width:1240px}
+/* hero + tiles + boxes (home) */
+.hero{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:14px}
+.hero-top{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
+.hero-top small{font-size:10px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase}
+.hero-top h1{font-size:22px;margin-top:2px}
+.hero-kpis{margin-left:auto;display:flex;gap:26px;text-align:right}
+.hk b{display:block;font-size:24px;font-variant-numeric:tabular-nums}
+.hk span{font-size:10px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+.hk.lar b{color:var(--laranja)}.hk.ver b{color:var(--vermelho)}.hk.ama b{color:var(--amarelo)}
+.pcs-lbl{font-size:10px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase;margin:16px 0 8px}
+.pcs{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.cscard{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.cscard .cshead{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px}
+.cscard .csres{margin-left:auto;font-size:11px;color:var(--muted)}
+.cscli{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);padding:4px 0;border-top:1px solid var(--border);cursor:pointer}
+.cscli:hover{color:var(--text)}
+.cscli .nums{margin-left:auto;display:flex;gap:5px}
+.num{min-width:20px;text-align:center;border-radius:5px;font-size:11px;padding:1px 5px;font-variant-numeric:tabular-nums;background:var(--panel2);color:var(--faint)}
+.num.lar{background:rgba(255,140,66,.15);color:var(--laranja)}
+.num.ver{background:rgba(248,81,73,.15);color:var(--vermelho)}
+.num.ama{background:rgba(227,179,65,.15);color:var(--amarelo)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:10px;margin-bottom:16px}
+.tile{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;position:relative;overflow:hidden}
+.tile::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:var(--tc,var(--border))}
+.tile small{font-size:10px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+.tile b{display:block;font-size:26px;margin:4px 0 2px;font-variant-numeric:tabular-nums}
+.tile b i{font-style:normal;font-size:15px;color:var(--faint)}
+.tile span{font-size:11px;color:var(--faint)}
+.cols{display:grid;grid-template-columns:1fr;gap:14px}
+@media(min-width:980px){.cols{grid-template-columns:1.5fr 1fr}}
+.box{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.box h2{font-size:13.5px;display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.box h2 .bdg{font-size:11px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:1px 7px;color:var(--muted);font-weight:400}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+td,th{padding:7px 6px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+tr:last-child td{border-bottom:none}
+th{color:var(--faint);font-weight:600;font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.venc{color:var(--vermelho);font-size:12px;white-space:nowrap}
+.venc small{display:block;color:var(--faint);font-size:10.5px}
+.pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:1px 8px;font-size:10.5px;white-space:nowrap}
+.p-atr{background:rgba(248,81,73,.13);color:var(--vermelho)}
+.p-qw{background:rgba(227,179,65,.15);color:var(--amarelo)}
+.p-hoje{background:rgba(255,140,66,.14);color:var(--laranja)}
+.p-ok{background:rgba(63,185,80,.13);color:var(--verde)}
+.p-cel{background:linear-gradient(135deg,rgba(236,101,71,.2),rgba(255,140,66,.2));color:var(--laranja)}
+.p-mut{background:var(--panel2);color:var(--muted)}
+.quando b{display:block;font-size:12px}.quando b.hoje{color:var(--laranja)}
+.quando small{color:var(--faint);font-size:10.5px}
+.resp{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap}
+.mini{width:20px;height:20px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);color:var(--muted);display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0}
+.celeb{display:flex;gap:10px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;align-items:flex-start}
+.celeb .star{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--rosa),var(--laranja));display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.celeb b{font-size:13px;display:block}.celeb small{color:var(--muted);font-size:11.5px}
+.celeb .pill{margin-left:auto;align-self:center}
+.agenda{display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px}
+.agenda .glbl{font-size:10px;letter-spacing:.08em;color:var(--faint);text-transform:uppercase;margin-bottom:6px}
+.agenda .lin{display:flex;gap:6px;align-items:center;color:var(--muted);padding:3px 0}
+.agenda .lin span{margin-left:auto;color:var(--faint);font-size:11px}
+.nota{text-align:center;color:var(--faint);font-size:11.5px;margin-top:12px}
+/* calendário */
+.calhead{display:flex;align-items:center;gap:12px;margin-bottom:4px;flex-wrap:wrap}
+.calnav{display:flex;align-items:center;background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.calnav span{padding:6px 12px;cursor:pointer;color:var(--muted);font-size:13px}
+.calnav span:hover{background:var(--panel2);color:var(--text)}
+.calhead h1{font-size:20px}
+.leg{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap;font-size:10.5px;color:var(--muted)}
+.leg i{font-style:normal;display:inline-flex;align-items:center;gap:4px}
+.leg b{width:7px;height:7px;border-radius:50%;display:inline-block}
+.calsub{color:var(--faint);font-size:11.5px;margin-bottom:10px}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card)}
+.caldow{padding:7px 8px;font-size:9.5px;letter-spacing:.1em;color:var(--faint);text-transform:uppercase;text-align:center;border-bottom:1px solid var(--border);background:var(--panel)}
+.caldia{min-height:96px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:5px 6px;cursor:pointer;overflow:hidden}
+.caldia:nth-child(7n){border-right:none}
+.caldia:hover{background:var(--panel2)}
+.caldia .dn{font-size:11.5px;color:var(--muted);margin-bottom:3px}
+.caldia.fora{background:rgba(0,0,0,.25)}.caldia.fora .dn{color:var(--faint)}
+.caldia.hoje{outline:1.5px solid var(--laranja);outline-offset:-1.5px}
+.caldia.hoje .dn{color:var(--laranja);font-weight:700}
+.calev{border-left:2.5px solid var(--ec,var(--laranja));background:rgba(255,255,255,.03);border-radius:0 4px 4px 0;padding:1px 4px;font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+.calev.done{text-decoration:line-through;opacity:.55}
+.calmais{font-size:10px;color:var(--laranja)}
+/* popup do dia */
+.diaitem{display:flex;gap:10px;align-items:center;border:1px solid var(--border);border-left:3px solid var(--ec,var(--laranja));border-radius:8px;background:var(--panel2);padding:8px 10px;margin-bottom:7px;cursor:pointer;font-size:12.5px}
+.diaitem:hover{background:var(--panel)}
+.diaitem .t b{display:block;font-size:12.5px;font-weight:600}
+.diaitem .t small{color:var(--laranja);font-size:10.5px}
+.diaitem .t small em{font-style:normal;color:var(--faint)}
+.diaitem .fx{margin-left:auto;display:flex;gap:6px;align-items:center;flex-shrink:0}
+/* por sucesso do cliente */
+.pscards{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px;align-items:start}
+.pscard{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px}
+.pscard .ph{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.pscard .ph .avatar{width:34px;height:34px;font-size:12px}
+.pscard .ph b{display:block;font-size:14px}
+.pscard .ph small{font-size:11.5px;color:var(--muted)}
+.pscard .ph small .ok{color:var(--verde)} .pscard .ph small .bad{color:var(--vermelho)}
+.pscard .ph .bdg{margin-left:auto;font-size:11px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:1px 7px;color:var(--muted)}
+.psmini{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer}
+.psmini:hover{border-color:var(--laranja)}
+.psmini b{font-size:13px}
+.psmini .lin1{display:flex;align-items:baseline;gap:8px}
+.psmini .lin1 span{margin-left:auto;font-size:11.5px;color:var(--muted)}
+.psmini small{display:block;color:var(--faint);font-size:11px;margin:2px 0 6px}
+.psmini .badges{display:flex;gap:5px;margin-top:6px}
+.nota b{color:var(--laranja);font-weight:600}
+.vazio{color:var(--faint);font-size:12.5px;padding:6px 0}
+.rodape{color:var(--faint);font-size:11.5px;margin-top:20px;padding:0 22px}
+.constru{padding:60px 20px;text-align:center;color:var(--muted)}
+.constru b{display:block;font-size:18px;color:var(--text);margin-bottom:6px}
+/* clientes (galeria) */
+.gal-top{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.gal-top .info{color:var(--muted);font-size:12.5px}
+.gal-top .info b{display:block;font-size:11px;letter-spacing:.1em;color:var(--faint);text-transform:uppercase}
+.gal-top .right{margin-left:auto;display:flex;gap:8px}
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.gcard{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:border-color .15s}
+.gcard:hover{border-color:var(--laranja)}
+.gcard .capa{height:64px;background:linear-gradient(160deg,var(--panel2),var(--panel))}
+.gcard .corpo{padding:0 14px 12px}
+.gava{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--laranja),var(--rosa));color:#1a1006;font-weight:700;font-size:16px;display:flex;align-items:center;justify-content:center;margin-top:-26px;border:3px solid var(--card)}
+.gcard h3{font-size:15px;margin:8px 0 4px}
+.gchip{display:inline-flex;align-items:center;gap:5px;background:var(--panel2);border:1px solid var(--border);border-radius:999px;padding:2px 8px;font-size:11px;color:var(--muted)}
+.gdatas{display:flex;gap:10px;font-size:11.5px;color:var(--muted);margin:8px 0 6px}
+.gdatas .ani{color:var(--rosa)}
+.gbar{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
+.gbar i{display:block;height:100%;background:linear-gradient(90deg,var(--laranja),var(--rosa));border-radius:3px}
+.gfoot{display:flex;align-items:center;font-size:11.5px;color:var(--muted);margin-top:6px}
+.gfoot .pill{margin-left:auto}
+/* página do cliente */
+.cli-volta{display:inline-block;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:5px 12px;font-size:12px;color:var(--muted);cursor:pointer;margin-bottom:12px}
+.cli-capa{height:110px;background:linear-gradient(160deg,var(--panel2),var(--panel));border:1px solid var(--border);border-radius:14px}
+.cli-head{padding:0 18px;margin-top:-30px}
+.cli-ava{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,var(--laranja),var(--rosa));color:#1a1006;font-weight:700;font-size:20px;display:flex;align-items:center;justify-content:center;border:4px solid var(--bg)}
+.cli-head h1{font-size:24px;margin:8px 0}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.chip2{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--muted)}
+.chip2 b{color:var(--text);font-weight:600}
+.abas{display:flex;gap:2px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:3px;margin:14px 0;flex-wrap:wrap;width:fit-content}
+.aba{padding:6px 12px;border-radius:8px;font-size:12.5px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.aba.on{background:var(--panel2);color:var(--text);font-weight:600}
+.fasebox{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:10px;overflow:hidden}
+.fasebox summary{list-style:none;display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer}
+.fasebox summary::-webkit-details-marker{display:none}
+.fasebox summary .dot{width:8px;height:8px;border-radius:50%;background:var(--laranja);flex-shrink:0}
+.fasebox summary b{font-size:13.5px}
+.fasebox summary small{display:block;color:var(--faint);font-size:11.5px;font-weight:400}
+.fasebox summary .fx{margin-left:auto;display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--muted);flex-shrink:0}
+.fitem{display:flex;align-items:center;gap:10px;padding:9px 14px;border-top:1px solid var(--border);font-size:13px;cursor:pointer}
+.fitem:hover{background:var(--panel2)}
+.fitem .tit{min-width:0}
+.fitem .tit small{display:block;color:var(--faint);font-size:11px}
+.fitem.done .tit{color:var(--muted);text-decoration:line-through}
+.fitem .fx{margin-left:auto;display:flex;gap:6px;align-items:center;flex-shrink:0}
+/* kanban */
+.kb{display:grid;grid-template-columns:repeat(4,minmax(210px,1fr));gap:10px;overflow-x:auto}
+.kbcol{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px;min-width:210px}
+.kbcol h3{font-size:12px;display:flex;gap:6px;align-items:center;margin-bottom:8px;color:var(--muted)}
+.kbcol h3 .n{margin-left:auto;color:var(--faint)}
+.kbcard{background:var(--panel2);border:1px solid var(--border);border-left:3px solid var(--kc,var(--border));border-radius:8px;padding:8px 10px;margin-bottom:7px;font-size:12.5px;cursor:pointer}
+.kbcard small{display:block;color:var(--faint);font-size:10.5px;margin-top:3px}
+.kbcard .mini{float:right}
+/* gantt */
+.gantt{overflow-x:auto;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
+.gantt .grow{display:grid;grid-template-columns:230px 1fr;align-items:center;font-size:11.5px;min-width:700px}
+.gantt .grow>span{padding:4px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.gantt .lane{position:relative;height:20px;border-left:1px solid var(--border)}
+.gantt .bar{position:absolute;top:2px;height:16px;border-radius:4px;min-width:22px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#1a1006}
+.gantt .eixo{display:grid;grid-template-columns:230px 1fr;font-size:9.5px;color:var(--faint);margin-bottom:4px;min-width:700px}
+.gantt .eixo .esc{position:relative;height:14px}
+.gantt .eixo .esc span{position:absolute;transform:translateX(-50%)}
+/* modal */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:40px 14px;overflow:auto}
+.overlay.on{display:flex}
+.modal{background:#101420;border:1px solid var(--border);border-radius:14px;max-width:640px;width:100%;padding:22px}
+.modal h2{font-size:17px}
+.modal .sub{color:var(--muted);font-size:12px;margin-bottom:14px}
+.modal .fecha{float:right;cursor:pointer;color:var(--faint);font-size:18px}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mfull{grid-column:1/-1}
+.modal label{display:block;font-size:10px;letter-spacing:.1em;color:var(--faint);text-transform:uppercase;margin-bottom:4px}
+.modal input,.modal select,.modal textarea{width:100%}
+.modal textarea{min-height:70px;resize:vertical}
+.aviso{border-left:3px solid var(--laranja);background:var(--panel2);border-radius:0 8px 8px 0;padding:10px 12px;font-size:12px;color:var(--muted);margin-top:14px}
+.aviso b{color:var(--laranja)}
+.aviso .d0{color:var(--verde);font-weight:700}
+.mfoot{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.mbadges{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.prazoauto{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12.5px;color:var(--muted)}
+.prazoauto b{color:var(--text)}
+.mnote{font-size:11px;color:var(--faint);margin-top:4px}
+/* calendário range */
+.cal{position:absolute;top:100%;right:0;margin-top:6px;background:#101420;border:1px solid var(--border);border-radius:12px;padding:12px;z-index:60;width:252px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.cal .chead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:13px;font-weight:600}
+.cal .nav{cursor:pointer;color:var(--muted);padding:2px 8px;border-radius:6px}
+.cal .nav:hover{background:var(--panel2);color:var(--text)}
+.cal .dias{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:11.5px}
+.cal .dow{color:var(--faint);font-size:9.5px;padding:2px 0}
+.cal .d{padding:5px 0;border-radius:6px;cursor:pointer;color:var(--muted)}
+.cal .d:hover{background:var(--panel2);color:var(--text)}
+.cal .d.range{background:rgba(255,140,66,.15);color:var(--laranja);border-radius:0}
+.cal .d.cap{background:var(--laranja);color:#1a1006;font-weight:700;border-radius:6px}
+.cal .hint{font-size:10.5px;color:var(--faint);margin-top:8px;text-align:center}
+.fper{position:relative}
+/* MODO_APP: login/cadastro/aguardando aprovação */
+.tela-boot{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+.authcard{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:26px;max-width:340px;width:100%}
+.authcard label{display:block;font-size:10px;letter-spacing:.1em;color:var(--faint);text-transform:uppercase;margin-bottom:4px}
+/* tour caseiro (overlay + spotlight) */
+.tour-spot{position:fixed;top:50%;left:50%;width:0;height:0;box-shadow:0 0 0 6000px rgba(0,0,0,.72);border-radius:10px;transition:all .25s ease;z-index:199;pointer-events:none}
+.tour-balao{position:fixed;background:#101420;border:1px solid var(--border);border-radius:12px;padding:16px;width:300px;max-width:calc(100vw - 28px);box-shadow:0 10px 30px rgba(0,0,0,.5);z-index:201;font-size:13px}
+.tour-balao b{display:block;font-size:14px;margin-bottom:6px}
+.tour-balao p{color:var(--muted);font-size:12.5px;line-height:1.5;margin-bottom:10px}
+.tour-fx{display:flex;align-items:center;font-size:11px;color:var(--faint)}
+@media(max-width:760px){.side{display:none}.hero-kpis{margin-left:0;text-align:left}.kb{grid-template-columns:repeat(4,230px)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="logo">H</div><div><b>Central de Projetos</b><span>Hawki</span></div></div>
+    <div class="ngroup"><div class="glbl">Visão geral</div>
+      <div class="nitem" data-v="dashboard">▦ Dashboard</div>
+      <div class="nitem" data-v="clientes">▢ Clientes <span class="bdg" id="b-cli"></span></div>
+      <div class="nitem" data-v="cs">☺ Por Sucesso do Cliente</div>
+    </div>
+    <div class="ngroup"><div class="glbl">Planejamento</div>
+      <div class="nitem" data-v="calendario">▤ Calendário</div>
+      <div class="nitem" data-v="celebracoes">★ Celebrações <span class="bdg" id="b-qw"></span></div>
+    </div>
+    <div class="ngroup"><div class="glbl">Equipe</div>
+      <div class="nitem" data-v="responsaveis">▣ Responsáveis</div>
+      <div class="nitem" data-v="modelo">≣ Modelo de Prazos</div>
+    </div>
+    <div class="ngroup"><div class="glbl">Sistema</div>
+      <div class="nitem" data-v="config">⚙ Configurações</div>
+      <div class="nitem" data-v="usuarios" id="nav-usuarios" style="display:none">👥 Usuários</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="crumb"><small id="crumb-top">Visão geral</small><b id="crumb">Dashboard</b></div>
+      <div class="perfil" id="perfil-box"><span class="avatar">PH</span> Pietro · Admin · acesso total</div>
+      <div class="filtros">
+        <select id="f-cs"></select>
+        <select id="f-cliente"></select>
+        <div class="fper">
+          <button class="btn sec" id="f-periodo-btn">Qualquer período ▾</button>
+          <div class="cal" id="permenu" style="display:none;width:200px;padding:6px"></div>
+          <div class="cal" id="cal" style="display:none"></div>
+        </div>
+        <select id="f-status">
+          <option value="all">Qualquer status</option>
+          <option value="atrasado">Atrasado</option>
+          <option value="hoje">Vence hoje</option>
+          <option value="pendente">Pendente</option>
+          <option value="feito">Concluído</option>
+          <option value="cliente">Aguardando cliente</option>
+        </select>
+        <button class="btn" id="novo">+ Novo cliente</button>
+      </div>
+    </div>
+    <div class="conteudo" id="view"></div>
+    <div class="rodape">gerado <span id="gerado"></span> · dado vem da <a id="lnk" href="#" target="_blank" style="color:var(--azul)">planilha da Central</a> · clique numa atividade pra ver o detalhe e editar na planilha · QW com * só celebra com verificação · nunca "está no ar"</div>
+  </div>
+</div>
+
+<!-- modal novo cliente -->
+<div class="overlay" id="ov-novo"><div class="modal">
+  <span class="fecha" onclick="fecha('ov-novo')">✕</span>
+  <h2>Novo cliente</h2><div class="sub">Informações principais do projeto</div>
+  <div class="mgrid">
+    <div class="mfull"><label>Nome do cliente</label><input id="nc-nome" placeholder="Ex: Clínica Odonto Smile"></div>
+    <div><label>Sucesso do Cliente (CS)</label><select id="nc-cs"><option>Adão</option><option>Pietro</option></select></div>
+    <div><label>Data da reunião de onboarding</label><input id="nc-onb" type="date"></div>
+    <div><label>Gestor de tráfego</label><select id="nc-gt"><option>Gestora</option><option>—</option></select></div>
+    <div><label>Tipo de serviço</label><select id="nc-tipo"><option>Sofia (IA only)</option><option>Tráfego</option><option>COMBO (Tráfego + Sofia)</option></select></div>
+    <div><label>Aniversário do cliente</label><input id="nc-ani" type="date"></div>
+    <div><label>Data de assinatura</label><input id="nc-ass" type="date"></div>
+    <div class="mfull"><label>Observações rápidas</label><textarea id="nc-obs" placeholder="Contexto rápido do cliente, particularidades..."></textarea></div>
+  </div>
+  <div class="aviso">Ao criar um cliente, o <b>modelo de prazos padrão</b> é aplicado automaticamente. A data do kickoff vira o <span class="d0">D+0</span> e os prazos de cada atividade são calculados a partir dela (pré-kickoff conta da assinatura). Design atende em time compartilhado (GT + IA de imagem).</div>
+  <div class="mfoot"><button class="btn sec" onclick="fecha('ov-novo')">Cancelar</button><button class="btn" onclick="criarCliente()">Criar cliente</button></div>
+</div></div>
+
+<!-- modal atividade -->
+<div class="overlay" id="ov-atv"><div class="modal" id="atv-corpo"></div></div>
+
+<!-- MODO_APP: tela de login/cadastro/aguardando aprovação -->
+<div class="tela-boot" id="tela-boot"></div>
+<!-- tour caseiro -->
+<div class="tour-spot" id="tour-spot" style="display:none"></div>
+<div class="tour-balao" id="tour-balao" style="display:none"></div>
+
+<script>
+const MODO_APP = true;
+const K_LOCAL = ''; // só tem valor real no build local; vazio no app.html publicado
+let D = null;
+function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+const HOJE = new Date((D? D.hoje : todayISO())+'T12:00:00');
+function aplicaCabecalho(){
+  if(!D) return;
+  document.getElementById('gerado').textContent = D.gerado;
+  document.getElementById('lnk').href = D.url_planilha;
+}
+aplicaCabecalho();
+const MES = ['jan.','fev.','mar.','abr.','mai.','jun.','jul.','ago.','set.','out.','nov.','dez.'];
+const MESL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const DIAS = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const dt = iso => iso? new Date(iso+'T12:00:00') : null;
+const fmtCurto = d => d? `${d.getDate()} de ${MES[d.getMonth()]}` : '—';
+const fmtLongo = d => d? `${d.getDate()} de ${MESL[d.getMonth()].toLowerCase()} de ${d.getFullYear()}` : '—';
+const diasAte = d => Math.round((d-HOJE)/86400000);
+const ini = n => n.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+const linhaCel = (c,row,col) => `${D.url_planilha}/edit#gid=${c.gid}&range=${col}${row}`;
+
+const F = JSON.parse(localStorage.getItem('central_filtros')||'{}');
+F.cs=F.cs||'all'; F.cliente=F.cliente||'all'; F.periodo=F.periodo||'all'; F.status=F.status||'all';
+F.de=F.de||''; F.ate=F.ate||'';
+function salvaF(){ localStorage.setItem('central_filtros', JSON.stringify(F)); }
+
+const ehCliente = i => i.pessoas.some(p=>p==='Cliente'||p==='CRC da clínica');
+function stEfetivo(i){
+  if(i.cls==='feito') return 'feito';
+  if((i.cls==='atrasado'||i.cls==='atraso_qw') && ehCliente(i)) return 'cliente';
+  return i.cls;
+}
+function dentroPeriodo(i){
+  if(F.periodo==='all') return true;
+  const d = dt(i.prev); if(!d) return false;
+  const n = diasAte(d);
+  if(F.periodo==='hoje') return n===0;
+  if(F.periodo==='7d') return n>=0 && n<=7;
+  if(F.periodo==='semana'){ const dow=HOJE.getDay()||7; return n>=1-dow && n<=7-dow; }
+  if(F.periodo==='mes') return d.getMonth()===HOJE.getMonth() && d.getFullYear()===HOJE.getFullYear();
+  if(F.periodo==='ultmes'){ const m=new Date(HOJE); m.setMonth(m.getMonth()-1); return d.getMonth()===m.getMonth() && d.getFullYear()===m.getFullYear(); }
+  if(F.periodo==='custom'){
+    if(!F.de||!F.ate) return true;
+    return i.prev>=F.de && i.prev<=F.ate;
+  }
+  return true;
+}
+function passaFiltro(c,i){
+  if(F.cliente!=='all' && c.nome!==F.cliente) return false;
+  if(F.cs!=='all' && !(c.cs===F.cs || i.pessoas.includes(F.cs))) return false;
+  if(!dentroPeriodo(i)) return false;
+  const st = stEfetivo(i);
+  if(F.status!=='all'){
+    if(F.status==='atrasado' && !(st==='atrasado'||st==='atraso_qw')) return false;
+    if(F.status==='hoje' && st!=='hoje') return false;
+    if(F.status==='pendente' && st!=='pendente') return false;
+    if(F.status==='feito' && st!=='feito') return false;
+    if(F.status==='cliente' && st!=='cliente') return false;
+  }
+  return true;
+}
+const todosItens = c => c.fases.flatMap(f=>f.itens);
+const itensDe = c => todosItens(c).filter(i=>passaFiltro(c,i));
+const clientesF = () => D.clientes.filter(c=>F.cliente==='all'||c.nome===F.cliente);
+
+function montaSel(id, opts, atual, cb){
+  const el = document.getElementById(id);
+  el.innerHTML = opts.map(([v,l])=>`<option value="${esc(v)}" ${v===atual?'selected':''}>${esc(l)}</option>`).join('');
+  el.onchange = ()=>{ cb(el.value); salvaF(); render(); };
+}
+function montaFiltros(){
+  if(!D) return;
+  montaSel('f-cs', [['all','Todos os CS'],...D.cs_lista.map(x=>[x,x]),['Pietro','Pietro'],['Gestora','Gestora'],['Automação','Automação']], F.cs, v=>F.cs=v);
+  montaSel('f-cliente', [['all','Todos os clientes'],...D.clientes.map(c=>[c.nome,c.nome])], F.cliente, v=>F.cliente=v);
+  document.getElementById('f-status').value=F.status;
+  document.getElementById('f-status').onchange=e=>{F.status=e.target.value;salvaF();render();};
+}
+montaFiltros();
+
+// ---- período: dropdown próprio + range personalizado (calendário 2 cliques) ----
+const PERIODOS=[['all','Qualquer período'],['hoje','Hoje'],['semana','Esta semana'],['7d','Próximos 7 dias'],['mes','Este mês'],['ultmes','Último mês'],['custom','Personalizado…']];
+const perBtn=document.getElementById('f-periodo-btn');
+const fmtBR = iso=>iso.split('-').reverse().slice(0,2).join('/');
+function labelPer(){
+  if(F.periodo==='custom'&&F.de&&F.ate) return `${fmtBR(F.de)} → ${fmtBR(F.ate)} ▾`;
+  return (PERIODOS.find(p=>p[0]===F.periodo)||PERIODOS[0])[1]+' ▾';
+}
+function atualizaPerBtn(){ perBtn.textContent=labelPer(); perBtn.style.color = F.periodo!=='all'? 'var(--laranja)':''; }
+let calMes = new Date(HOJE.getFullYear(), HOJE.getMonth(), 1), calIni = null;
+perBtn.onclick = e=>{
+  e.stopPropagation(); fechaCal();
+  const m=document.getElementById('permenu');
+  if(m.style.display==='block'){ m.style.display='none'; return; }
+  m.innerHTML = PERIODOS.map(([v,l])=>`<div class="nitem ${F.periodo===v?'on':''}" data-p="${v}">${l}</div>`).join('');
+  m.style.display='block';
+  m.querySelectorAll('.nitem').forEach(o=>o.onclick=ev=>{
+    ev.stopPropagation(); m.style.display='none';
+    if(o.dataset.p==='custom'){ calIni=null; abreCal(); }
+    else { F.periodo=o.dataset.p; F.de=F.ate=''; salvaF(); atualizaPerBtn(); render(); }
+  });
+};
+function abreCal(){ document.getElementById('cal').style.display='block'; desenhaCal(); }
+function fechaCal(){ document.getElementById('cal').style.display='none'; }
+function desenhaCal(){
+  const el = document.getElementById('cal');
+  const y=calMes.getFullYear(), m=calMes.getMonth();
+  const prim=new Date(y,m,1).getDay(), nd=new Date(y,m+1,0).getDate();
+  let cels='';
+  ['D','S','T','Q','Q','S','S'].forEach(d=>cels+=`<div class="dow">${d}</div>`);
+  for(let i=0;i<prim;i++) cels+='<div></div>';
+  for(let d=1;d<=nd;d++){
+    const iso=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    let cls='d';
+    if(calIni && iso===calIni) cls+=' cap';
+    else if(F.de&&F.ate&&iso>=F.de&&iso<=F.ate) cls+= (iso===F.de||iso===F.ate)?' cap':' range';
+    cels+=`<div class="${cls}" data-iso="${iso}">${d}</div>`;
+  }
+  el.innerHTML=`<div class="chead"><span class="nav" data-n="-1">‹</span><span>${MESL[m]} ${y}</span><span class="nav" data-n="1">›</span></div>
+    <div class="dias">${cels}</div>
+    <div class="hint">${calIni? '2º clique: data FINAL' : '1º clique: data de INÍCIO'}${F.de&&F.ate&&!calIni? ` · ${F.de.split('-').reverse().join('/')} → ${F.ate.split('-').reverse().join('/')}`:''}</div>`;
+  el.querySelectorAll('.nav').forEach(n=>n.onclick=ev=>{ev.stopPropagation();calMes.setMonth(calMes.getMonth()+ +n.dataset.n);desenhaCal();});
+  el.querySelectorAll('.d').forEach(dd=>dd.onclick=ev=>{
+    ev.stopPropagation();
+    const iso=dd.dataset.iso;
+    if(!calIni){ calIni=iso; F.de=F.ate=''; desenhaCal(); }
+    else{
+      F.de = iso<calIni? iso:calIni; F.ate = iso<calIni? calIni:iso;
+      F.periodo='custom'; calIni=null; salvaF(); atualizaPerBtn(); render(); desenhaCal();
+      setTimeout(fechaCal, 500);
+    }
+  });
+}
+document.addEventListener('click', e=>{ if(!e.target.closest('.fper')){ fechaCal(); const m=document.getElementById('permenu'); if(m) m.style.display='none'; } });
+atualizaPerBtn();
+
+// ---- API de escrita (Apps Script Web App; deploy de 10/08 já embutido como padrão) ----
+const API_DEFAULT = 'https://script.google.com/macros/s/AKfycbzFCsYofsyHM3Bi58v-HIpl8ki47iAUtxfLLxB6NrNecwCgt2Z7VnJ3_Ixicx6_4dwN6Q/exec';
+const API = ()=>localStorage.getItem('central_api')||API_DEFAULT;
+const API_TOKEN = 'hc_x9k24qf7';
+async function gasSave(payload, btn){
+  const url=API();
+  if(!url){ alert('Escrita ainda não configurada.\n\nSetup de 2 min (uma vez): abrir Configurações no menu e seguir os 3 passos do web app.'); return false; }
+  const old=btn? btn.textContent:''; if(btn){btn.textContent='Salvando…';btn.disabled=true;}
+  try{
+    const corpo={k:API_TOKEN,...payload};
+    if(MODO_APP && SESSAO && SESSAO.access_token) corpo.sb_token = SESSAO.access_token;
+    else if(!MODO_APP && K_LOCAL) corpo.k_local = K_LOCAL;
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(corpo)});
+    const j=await r.json();
+    if(!j.ok) throw new Error(j.erro||'falha');
+    if(btn){btn.textContent='✓ Salvo';setTimeout(()=>{btn.textContent=old;btn.disabled=false;},1200);}
+    return true;
+  }catch(e){
+    if(btn){btn.textContent=old;btn.disabled=false;}
+    alert('Não salvou: '+e.message+'\nConfira a URL da API em Configurações.');
+    return false;
+  }
+}
+
+function baixarSnapshot(){
+  const blob=new Blob([JSON.stringify(D,null,1)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='central-hawki-snapshot-'+D.hoje+'.json';
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+// =====================================================================
+// MODO_APP — autenticação Supabase (Fase 5). Só roda quando MODO_APP=true
+// (app.html); hawki_central.html (modo local) nunca chama nada disto.
+// =====================================================================
+const SUPABASE_URL = 'https://muerqpmwvvewxjusgubb.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_fD2RW8rAnJgp1XkzRpnZcQ_i0MnkfCZ';
+const sb = (MODO_APP && typeof window!=='undefined' && window.supabase)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+let SESSAO = null, PERFIL = null;
+const CARGO_LABEL = {admin:'Admin',cs:'Sucesso do Cliente',gt:'Gestor de Tráfego',automacao:'Automação'};
+
+function telaBoot(html){
+  const app=document.querySelector('.app'); if(app) app.style.display='none';
+  const b=document.getElementById('tela-boot');
+  b.style.display='flex'; b.innerHTML=html;
+}
+function fechaBoot(){
+  document.getElementById('tela-boot').style.display='none';
+  document.querySelector('.app').style.display='flex';
+}
+function telaLogin(msg){
+  telaBoot(`<div class="authcard">
+    <div class="brand" style="justify-content:center;margin-bottom:18px"><div class="logo">H</div><div><b>Central de Projetos</b><span>Hawki</span></div></div>
+    ${msg? `<div class="aviso" style="margin-bottom:12px">${esc(msg)}</div>`:''}
+    <label>Email</label><input id="au-email" type="email" placeholder="voce@hawki.com.br" style="width:100%;margin-bottom:10px">
+    <label>Senha</label><input id="au-senha" type="password" placeholder="••••••••" style="width:100%;margin-bottom:16px">
+    <div id="au-erro" class="mnote" style="color:var(--vermelho);margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px"><button class="btn" id="au-entrar" style="flex:1">Entrar</button><button class="btn sec" id="au-criar">Criar conta</button></div>
+    <div class="mnote" style="margin-top:14px;text-align:center">Time Hawki: crie sua conta com email e senha. Um admin (Pietro ou Marcos) aprova e define seu cargo antes do primeiro acesso.</div>
+  </div>`);
+  document.getElementById('au-entrar').onclick=fazerLogin;
+  document.getElementById('au-criar').onclick=fazerCadastro;
+  document.getElementById('au-senha').onkeydown=e=>{ if(e.key==='Enter') fazerLogin(); };
+}
+async function fazerCadastro(){
+  const email=document.getElementById('au-email').value.trim(), senha=document.getElementById('au-senha').value;
+  const erro=document.getElementById('au-erro'); erro.textContent='';
+  if(!email||!senha){ erro.textContent='Preencha email e senha (mínimo 8 caracteres).'; return; }
+  if(senha.length<8){ erro.textContent='Senha muito curta: use 8+ caracteres.'; return; }
+  const {data,error} = await sb.auth.signUp({email,password:senha});
+  if(error){ erro.textContent='Não criou: '+error.message; return; }
+  if(data.session){ SESSAO=data.session; await carregaAposLogin(); }
+  else telaAguardando();
+}
+function telaAguardando(){
+  telaBoot(`<div class="authcard" style="text-align:center">
+    <div class="brand" style="justify-content:center;margin-bottom:18px"><div class="logo">H</div><div><b>Central de Projetos</b><span>Hawki</span></div></div>
+    <div style="font-size:34px;margin-bottom:8px">⏳</div>
+    <b style="display:block;font-size:15px;margin-bottom:6px">Conta criada — aguardando aprovação</b>
+    <div class="mnote" style="margin-bottom:16px">Um admin (Pietro ou Marcos) libera seu acesso na tela Usuários. Assim que aprovar, é só entrar de novo.</div>
+    <button class="btn sec" id="au-sair">Sair</button></div>`);
+  document.getElementById('au-sair').onclick=fazerLogout;
+}
+async function fazerLogin(){
+  const email=document.getElementById('au-email').value.trim(), senha=document.getElementById('au-senha').value;
+  const erro=document.getElementById('au-erro'); erro.textContent='';
+  if(!email||!senha){ erro.textContent='Preencha email e senha.'; return; }
+  const {data,error} = await sb.auth.signInWithPassword({email,password:senha});
+  if(error){ erro.textContent='Não entrou: '+error.message; return; }
+  SESSAO = data.session; await carregaAposLogin();
+}
+async function fazerLogout(){
+  if(sb) await sb.auth.signOut();
+  SESSAO=null; PERFIL=null; D=null;
+  telaLogin();
+}
+async function carregaAposLogin(){
+  telaBoot(`<div class="authcard" style="text-align:center"><b>Entrando…</b><div class="mnote" style="margin-top:8px">Carregando seus dados</div></div>`);
+  const {data:{user}} = await sb.auth.getUser();
+  if(!user){ telaLogin('Sessão expirou, entre de novo.'); return; }
+  const {data:perfil, error} = await sb.from('profiles').select('*').eq('id',user.id).single();
+  if(error || !perfil){ telaLogin('Não achou seu perfil ainda. Tente de novo em instantes.'); return; }
+  PERFIL = perfil;
+  if(!perfil.aprovado){ telaAguardando(); return; }
+  await carregaDados();
+}
+async function carregaDados(){
+  const {data:clientesRows, error:e1} = await sb.from('clientes').select('*').eq('ativo',true);
+  const {data:atividadesRows, error:e2} = await sb.from('atividades').select('*').eq('ativo',true);
+  if(e1||e2){ telaLogin('Erro ao carregar dados: '+((e1||e2).message)); return; }
+  // reagrupamento: a planilha tem cabeçalhos de fase (FASE 00, MÓDULO...) que
+  // NÃO viraram linha própria no banco (só linhas de atividade existem em
+  // "atividades"). Decisão desta microfase: no app autenticado cada cliente
+  // vira 1 fase única "ATIVIDADES" (o resto do JS já entende esse formato —
+  // fases[].itens[] — sem precisar recriar a lógica de fase/D+n aqui). Se
+  // algum dia o dashboard do app precisar das fases originais, a saída é
+  // publicar o título da fase junto na tabela atividades (coluna nova).
+  const clientes = (clientesRows||[]).map(c=>({
+    aba:c.aba, gid:0, nome:c.nome||c.aba, servico:c.servico||'',
+    assinatura:c.assinatura||'', kickoff:c.kickoff||'', aniversario:c.aniversario||'',
+    gt:c.gt||'', dev:'', info:c.info||'', obs:c.obs||'', cs:c.cs||'',
+    fases:[{titulo:'ATIVIDADES', desc:'Atividades visíveis pro seu cargo (a permissão é aplicada no servidor pelo Supabase, não aqui).', itens:[]}]
+  }));
+  const porAba={}; clientes.forEach(c=>porAba[c.aba]=c);
+  (atividadesRows||[]).forEach(a=>{
+    const c=porAba[a.cliente_aba]; if(!c) return;
+    c.fases[0].itens.push({
+      row:a.row, tempo:a.tempo||'', tipo:a.tipo||'', papel:a.papel||'',
+      pessoas:a.pessoas||[], ativ:a.ativ||'', prev:a.prev||'', feito:a.feito||'',
+      cls:a.cls||'', motivo:a.motivo||'', verif:a.verif||''
+    });
+  });
+  D = {
+    gerado: new Date().toLocaleString('pt-BR'),
+    hoje: todayISO(), sid:'', url_planilha:'',
+    cs_lista: Array.from(new Set(clientes.map(c=>c.cs).filter(Boolean))),
+    clientes, modelos:{sofia:{aba:'',gid:0,fases:[]}, trafego:{aba:'',gid:0,fases:[]}}
+  };
+  aplicaCabecalho(); montaFiltros(); aplicaPerfilTopo(); aplicaVisibilidadeCargo();
+  fechaBoot(); VIEW='dashboard'; CLI=null; render();
+  await checaTour();
+}
+function aplicaPerfilTopo(){
+  if(!MODO_APP || !PERFIL) return;
+  const nome = PERFIL.nome || PERFIL.email.split('@')[0];
+  const cargoTxt = CARGO_LABEL[PERFIL.cargo] || PERFIL.cargo;
+  document.getElementById('perfil-box').innerHTML =
+    `<span class="avatar">${esc(ini(nome))}</span> ${esc(nome)} · ${esc(cargoTxt)} <button class="btn sec" style="padding:3px 9px;font-size:11px;margin-left:6px" id="btn-sair">Sair</button>`;
+  document.getElementById('btn-sair').onclick=fazerLogout;
+}
+function aplicaVisibilidadeCargo(){
+  if(!MODO_APP || !PERFIL) return;
+  const admin = PERFIL.cargo==='admin';
+  const respNav=document.querySelector('.nitem[data-v="responsaveis"]'); if(respNav) respNav.style.display = admin? '':'none';
+  const usNav=document.getElementById('nav-usuarios'); if(usNav) usNav.style.display = admin? '':'none';
+  const novoBtn=document.getElementById('novo'); if(novoBtn) novoBtn.style.display = admin? '':'none';
+}
+function iniciarApp(){
+  telaBoot(`<div class="authcard" style="text-align:center"><b>Carregando…</b></div>`);
+  if(!sb){ telaLogin('Não carregou a biblioteca de login (supabase-js). Recarregue a página.'); return; }
+  sb.auth.getSession().then(({data})=>{
+    if(data.session){ SESSAO=data.session; carregaAposLogin(); }
+    else telaLogin();
+  });
+}
+
+// ---------- tela Usuários (Sistema, só admin) ----------
+async function renderUsuarios(v){
+  const link = (typeof location!=='undefined'? location.href.split('#')[0] : '');
+  v.innerHTML=`<div class="aviso" style="margin-bottom:14px">Link do app pra compartilhar com o time: <b>${esc(link)}</b> — cada pessoa cria a própria conta; você aprova aqui embaixo.</div>
+  <div class="box"><h2>👥 Usuários <span class="bdg" id="us-count"></span></h2><div id="us-tabela" class="mnote">Carregando…</div></div>
+  <button class="btn sec" style="margin-top:10px;opacity:.5" disabled title="v2 — exige service key">✉ Convidar por email</button>`;
+  if(!sb) return;
+  const {data,error} = await sb.from('profiles').select('*').order('criado_em',{ascending:false});
+  const tb=document.getElementById('us-tabela');
+  if(error){ tb.innerHTML='Erro: '+esc(error.message); return; }
+  document.getElementById('us-count').textContent = data.length;
+  const cargos=['admin','cs','gt','automacao'];
+  tb.innerHTML=`<table><tr><th>Nome</th><th>Email</th><th>Cargo</th><th>Status</th><th>Criado</th><th></th></tr>${
+    data.map(u=>`<tr>
+      <td>${esc(u.nome||'—')}</td><td>${esc(u.email)}</td>
+      <td><select data-id="${esc(u.id)}" class="us-cargo">${cargos.map(c=>`<option value="${c}" ${u.cargo===c?'selected':''}>${esc(CARGO_LABEL[c]||c)}</option>`).join('')}</select></td>
+      <td>${u.aprovado?'<span class="pill p-ok">✓ Aprovado</span>':'<span class="pill p-hoje">◔ Pendente</span>'}</td>
+      <td>${u.criado_em? new Date(u.criado_em).toLocaleDateString('pt-BR'):'—'}</td>
+      <td style="white-space:nowrap">${u.aprovado?`<button class="btn sec us-desativar" data-id="${esc(u.id)}">Desativar</button>`:`<button class="btn us-aprovar" data-id="${esc(u.id)}">Aprovar</button>`}</td>
+    </tr>`).join('')}</table>`;
+  tb.querySelectorAll('.us-cargo').forEach(s=>s.onchange=async()=>{ await sb.from('profiles').update({cargo:s.value}).eq('id',s.dataset.id); });
+  tb.querySelectorAll('.us-aprovar').forEach(b=>b.onclick=async()=>{ await sb.from('profiles').update({aprovado:true}).eq('id',b.dataset.id); renderUsuarios(v); });
+  tb.querySelectorAll('.us-desativar').forEach(b=>b.onclick=async()=>{ await sb.from('profiles').update({aprovado:false}).eq('id',b.dataset.id); renderUsuarios(v); });
+}
+
+// ---------- Minha agenda Google (shell OAuth por usuário) ----------
+const GCAL_CLIENT_ID = ''; // [DEFINIR: criar OAuth Client no GCP — doc no setup.md]
+let GCAL_TOKEN = null;
+function blocoAgendaPessoal(){
+  const nomeAgenda = PERFIL? (PERFIL.nome||PERFIL.email) : 'você';
+  if(!GCAL_CLIENT_ID){
+    return `<div class="box" style="max-width:680px;margin-top:14px"><h2>▤ Minha agenda Google</h2>
+    <div class="mnote">Conexão direta por OAuth ainda não configurada (GCAL_CLIENT_ID vazio — [DEFINIR: criar OAuth Client no GCP, ver setup.md]). Por ora, assine a agenda compartilhada "Central · ${esc(nomeAgenda)}" criada pelo sync do Apps Script (peça o convite pro Pietro).</div></div>`;
+  }
+  return `<div class="box" style="max-width:680px;margin-top:14px"><h2>▤ Minha agenda Google</h2>
+  <div class="mnote" style="margin-bottom:8px">Conecte sua agenda pessoal do Google. As atividades do seu cargo (já filtradas pelo servidor) viram eventos de dia inteiro, sem duplicar.</div>
+  <button class="btn" id="gcal-conectar">Conectar minha agenda</button>
+  <button class="btn sec" id="gcal-sync" style="display:none;margin-left:8px">Sincronizar minhas atividades</button>
+  <div class="mnote" id="gcal-status" style="margin-top:8px"></div></div>`;
+}
+function initGcalBotoes(){
+  if(!GCAL_CLIENT_ID) return;
+  const bConn=document.getElementById('gcal-conectar'); if(!bConn) return;
+  bConn.onclick=()=>{
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: GCAL_CLIENT_ID, scope:'https://www.googleapis.com/auth/calendar.events',
+      callback:(resp)=>{
+        if(resp.error){ document.getElementById('gcal-status').textContent='Erro: '+resp.error; return; }
+        GCAL_TOKEN = resp.access_token;
+        document.getElementById('gcal-status').textContent='✓ conectado';
+        document.getElementById('gcal-sync').style.display='inline-block';
+      }
+    });
+    client.requestAccessToken();
+  };
+  const bSync=document.getElementById('gcal-sync');
+  if(bSync) bSync.onclick=sincronizarAgendaPessoal;
+}
+async function sincronizarAgendaPessoal(){
+  if(!GCAL_TOKEN||!D) return;
+  const st=document.getElementById('gcal-status'); st.textContent='Sincronizando…';
+  const hoje=new Date(), fim=new Date(Date.now()+120*86400000);
+  const itens = D.clientes.flatMap(c=>todosItens(c).filter(i=>i.prev).map(i=>({...i,c_nome:c.nome})))
+    .filter(i=>{const d=dt(i.prev); return d>=hoje && d<=fim;});
+  try{
+    const listUrl='https://www.googleapis.com/calendar/v3/events?privateExtendedProperty=central%3D1&timeMin='+hoje.toISOString()+'&timeMax='+fim.toISOString()+'&maxResults=2500';
+    const rl = await fetch(listUrl,{headers:{Authorization:'Bearer '+GCAL_TOKEN}});
+    const jl = await rl.json();
+    for(const ev of (jl.items||[])) await fetch('https://www.googleapis.com/calendar/v3/events/'+ev.id,{method:'DELETE',headers:{Authorization:'Bearer '+GCAL_TOKEN}});
+    let n=0;
+    for(const i of itens){
+      // all-day: end.date é EXCLUSIVO na API do Google — precisa ser o dia seguinte
+      const dFim=new Date(i.prev+'T12:00:00'); dFim.setDate(dFim.getDate()+1);
+      const fimISO=`${dFim.getFullYear()}-${String(dFim.getMonth()+1).padStart(2,'0')}-${String(dFim.getDate()).padStart(2,'0')}`;
+      const body={ summary:(i.tipo==='QW'?'★ ':'')+'['+i.c_nome+'] '+i.ativ, start:{date:i.prev}, end:{date:fimISO}, extendedProperties:{private:{central:'1'}} };
+      const rr=await fetch('https://www.googleapis.com/calendar/v3/events',{method:'POST',headers:{Authorization:'Bearer '+GCAL_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(rr.ok) n++;
+    }
+    st.textContent='✓ '+n+' evento(s) sincronizado(s)';
+  }catch(e){ st.textContent='✕ falhou: '+e.message; }
+}
+
+// ---------- tour caseiro (overlay + spotlight, 10 passos) ----------
+const TOUR_STEPS = [
+  {titulo:'Bem-vindo à Central de Projetos', texto:'Aqui você acompanha os clientes que são seus, os prazos e as celebrações. Um tour rápido de 10 passos — pode pular quando quiser.'},
+  {titulo:'Filtros globais', texto:'Filtre por CS, cliente, período e status. Os filtros ficam salvos e valem pra tudo que você vê no painel.', sel:'.filtros', antes:()=>{VIEW='dashboard';CLI=null;render();}},
+  {titulo:'Números de hoje', texto:'Aqui ficam os números que mais importam hoje: demandas do dia, atraso de celebração e o que depende do cliente.', sel:'.hero-kpis', antes:()=>{VIEW='dashboard';CLI=null;render();}},
+  {titulo:'Seus clientes', texto:'Aqui fica o menu com a lista de todos os seus clientes.', sel:'.nitem[data-v="clientes"]', antes:()=>{VIEW='dashboard';CLI=null;render();}},
+  {titulo:'Card do cliente', texto:'Clique num cliente pra abrir a página completa dele: etapas, kanban, calendário, histórico.', sel:'.gcard', antes:()=>{VIEW='clientes';CLI=null;render();}},
+  {titulo:'Data de feito é o coração do sistema', texto:'Toda atividade tem um prazo previsto automático. O que decide se ela está em dia é a Data de feito — preencher essa data é o que faz o painel calcular tudo certo.', sel:'.fasebox', antes:()=>{ if(D&&D.clientes[0]){ vaiCliente(D.clientes[0].aba); ABA_CLI='etapas'; render(); } }},
+  {titulo:'Kanban', texto:'Arraste um card pra Concluído pra marcar feito na hora.', sel:'.kb', antes:()=>{ if(CLI){ ABA_CLI='kanban'; render(); } }},
+  {titulo:'Calendário', texto:'Veja todas as atividades previstas por dia, com cor por responsável.', sel:'.calgrid', antes:()=>{VIEW='calendario';CLI=null;render();}},
+  {titulo:'Celebrações', texto:'As conquistas que provam o funil pro cliente ficam registradas aqui.', sel:'.tiles', antes:()=>{VIEW='celebracoes';CLI=null;render();}},
+  {titulo:'Pronto!', texto:'Isso é o essencial. Pra rever esse tour, vá em Configurações › Rever tour.\n\n[DEFINIR: link vídeo Loom de 3min do Pietro]'}
+];
+let TOUR_IX=0;
+function tourIniciar(){ TOUR_IX=0; tourPasso(); }
+function tourPasso(){
+  const passo=TOUR_STEPS[TOUR_IX];
+  if(!passo){ tourFim(); return; }
+  if(passo.antes){ try{ passo.antes(); }catch(e){} }
+  setTimeout(()=>tourDesenha(passo), 60);
+}
+function tourDesenha(passo){
+  const spot=document.getElementById('tour-spot'), bal=document.getElementById('tour-balao');
+  const alvo = passo.sel? document.querySelector(passo.sel) : null;
+  if(alvo){
+    const r=alvo.getBoundingClientRect(), pad=8;
+    spot.style.top=(r.top-pad)+'px'; spot.style.left=(r.left-pad)+'px';
+    spot.style.width=(r.width+pad*2)+'px'; spot.style.height=(r.height+pad*2)+'px';
+  } else {
+    spot.style.top='50%'; spot.style.left='50%'; spot.style.width='0px'; spot.style.height='0px';
+  }
+  spot.style.display='block';
+  bal.innerHTML=`<b>${esc(passo.titulo)}</b><p>${esc(passo.texto).replace(/\n/g,'<br>')}</p>
+    <div class="tour-fx"><span>${TOUR_IX+1} de ${TOUR_STEPS.length}</span>
+    <div style="margin-left:auto;display:flex;gap:6px">
+    ${TOUR_IX>0?'<button class="btn sec" id="tour-ant">Anterior</button>':''}
+    <button class="btn sec" id="tour-pular">Pular</button>
+    <button class="btn" id="tour-prox">${TOUR_IX===TOUR_STEPS.length-1?'Concluir':'Próximo'}</button></div></div>`;
+  if(alvo){
+    const r=alvo.getBoundingClientRect();
+    let top=r.bottom+16, left=Math.min(Math.max(r.left,14), window.innerWidth-314);
+    if(top+190>window.innerHeight) top=Math.max(14,r.top-190);
+    bal.style.top=top+'px'; bal.style.left=left+'px'; bal.style.transform='';
+  } else {
+    bal.style.top='50%'; bal.style.left='50%'; bal.style.transform='translate(-50%,-50%)';
+  }
+  bal.style.display='block';
+  document.getElementById('tour-prox').onclick=()=>{TOUR_IX++;tourPasso();};
+  document.getElementById('tour-pular').onclick=tourFim;
+  const ant=document.getElementById('tour-ant'); if(ant) ant.onclick=()=>{TOUR_IX--;tourPasso();};
+}
+async function tourFim(){
+  document.getElementById('tour-spot').style.display='none';
+  document.getElementById('tour-balao').style.display='none';
+  if(MODO_APP && sb && PERFIL){ await sb.from('profiles').update({tour_visto:true}).eq('id',PERFIL.id); PERFIL.tour_visto=true; }
+  else localStorage.setItem('central_tour_visto','1');
+}
+async function checaTour(){
+  if(MODO_APP){ if(PERFIL && !PERFIL.tour_visto) tourIniciar(); }
+  else if(!localStorage.getItem('central_tour_visto')) tourIniciar();
+}
+
+// ---- modais ----
+function abre(id){document.getElementById(id).classList.add('on');}
+function fecha(id){document.getElementById(id).classList.remove('on');}
+document.getElementById('novo').onclick=()=>abre('ov-novo');
+function criarCliente(){
+  const v=id=>document.getElementById(id).value.trim();
+  const txt=`NOVO CLIENTE (Central)\nNome: ${v('nc-nome')}\nTipo: ${v('nc-tipo')}\nCS: ${v('nc-cs')}\nGT: ${v('nc-gt')}\nAssinatura: ${v('nc-ass')}\nKickoff/onboarding: ${v('nc-onb')}\nAniversário Dr: ${v('nc-ani')}\nObs: ${v('nc-obs')}`;
+  navigator.clipboard && navigator.clipboard.writeText(txt);
+  alert('Dados copiados.\n\nA criação hoje roda na planilha: menu "Central > Instanciar cliente novo" (Apps Script) — cole os dados lá.\nQuando a Fase 4 (ClickUp) entrar, este botão cria sozinho.');
+  if(D.url_planilha) window.open(D.url_planilha,'_blank');
+  fecha('ov-novo');
+}
+
+// ---- popup de atividade (form fiel ao print; Salvar grava via API) ----
+const SIGLA_POR_PESSOA={'Adão':'SÓC','Pietro':'PIE','Gestora':'GT','Automação':'IA','Cliente':'CLI','CRC da clínica':'CRC'};
+const PAPEL_NOME={'SÓC':'Sucesso do Cliente','PIE':'Pietro (exceção)','GT':'Gestor de Tráfego','IA':'Automação','CLI':'Cliente','CRC':'CRC da clínica'};
+function abreAtv(cAba,row){
+  const c=D.clientes.find(x=>x.aba===cAba);
+  const fase=c.fases.find(f=>f.itens.some(i=>i.row===row));
+  const i=fase.itens.find(i=>i.row===row);
+  const st=stEfetivo(i);
+  const stBadge = st==='feito'?'<span class="pill p-ok">✓ Concluído</span>':st==='atraso_qw'?'<span class="pill p-qw">★ Atraso QW</span>':st==='atrasado'?'<span class="pill p-atr">● Atrasado</span>':st==='cliente'?'<span class="pill p-hoje">◔ Aguardando cliente</span>':st==='hoje'?'<span class="pill p-hoje">Vence hoje</span>':'<span class="pill p-hoje" style="background:rgba(227,179,65,.12);color:var(--amarelo)">● Aguardando</span>';
+  const badges=[
+    i.tipo==='QW'?'<span class="pill p-cel">★ Celebração</span>':i.tipo==='OV'?'<span class="pill p-mut">◆ Overdelivery</span>':'<span class="pill p-mut">● Processo interno</span>',
+    `<span class="pill p-mut">● ${esc(PAPEL_NOME[i.papel.split('+')[0].trim()]||i.papel)}</span>`, stBadge
+  ].join(' ');
+  const selTipo=['QW','PP','OV'].map(t=>`<option value="${t}" ${i.tipo===t?'selected':''}>${t==='QW'?'★ Celebração':t==='OV'?'◆ Overdelivery':'● Processo interno'}</option>`).join('');
+  const selResp=Object.keys(SIGLA_POR_PESSOA).map(p=>`<option ${i.pessoas[0]===p?'selected':''}>${p}</option>`).join('');
+  const motivos=['','Atraso nosso (QW)','Atraso nosso','Atraso do cliente','Dependência externa (GPI/bug)','Outro'];
+  const selMot=motivos.map(m=>`<option ${i.motivo===m?'selected':''}>${m||'—'}</option>`).join('');
+  document.getElementById('atv-corpo').innerHTML=`
+    <span class="fecha" onclick="fecha('ov-atv')">✕</span>
+    <h2>${esc(i.ativ)}</h2><div class="sub">${esc(c.nome)} · ${esc(fase.titulo)}</div>
+    <div class="mbadges">${badges}<span style="margin-left:auto;color:var(--faint);font-size:11px">◆ ${esc(fase.titulo.split(':')[0])}</span></div>
+    ${i.verif? `<div class="aviso" style="margin:0 0 12px">📌 [${esc(i.tipo)} · ${esc(i.tempo)}] Verificação: ${esc(i.verif)}</div>`:''}
+    <div class="mgrid">
+      <div class="mfull"><label>Atividade</label><input id="at-ativ" value="${esc(i.ativ)}"></div>
+      <div><label>Tipo</label><select id="at-tipo">${selTipo}</select></div>
+      <div><label>Responsável</label><select id="at-resp">${selResp}</select></div>
+      <div class="mfull prazoauto">📅 <label style="display:inline">Prazo previsto (automático do modelo)</label><br><b>${i.prev? fmtLongo(dt(i.prev)):'— aguarda âncora'}</b> <span style="color:var(--faint)">(${esc(fase.titulo.split(':')[0].toLowerCase())})</span> · <b>${esc(i.tempo)}</b></div>
+      <div><label>Data de feito</label><input id="at-feito" type="date" value="${i.feito||''}"></div>
+      <div><label>Status</label><select disabled><option>${st==='feito'?'Concluído':'Aguardando / Em andamento (automático)'}</option></select></div>
+      <div class="mfull"><label>Motivo do atraso</label><select id="at-motivo">${selMot}</select></div>
+      <div class="mfull mnote">Se a data de feito ficar dentro do prazo previsto, o sistema considera <b>sem atraso</b> automaticamente — não importa o que estiver selecionado aqui. Feito antes do prazo conta em Antecipadas.</div>
+      <div class="mfull"><label>Nota da atividade</label><textarea id="at-nota" placeholder="Registros, decisões, observações...">${esc(i.verif&&!i.verif.startsWith('Print')&&!i.verif.startsWith('Confirmação')&&!i.verif.startsWith('Resposta')?'':'')}</textarea></div>
+    </div>
+    <div class="mfoot">
+      <button class="btn danger" onclick="alert('Excluir linha do modelo só direto na planilha (proteção contra perda). Link: linha ${i.row}.')">Excluir</button>
+      ${i.prev? `<a class="btn sec" target="_blank" style="text-decoration:none" href="https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('['+c.nome+'] '+i.ativ)}&dates=${i.prev.replace(/-/g,'')}/${i.prev.replace(/-/g,'')}&details=${encodeURIComponent('Central de Projetos Hawki · '+i.tempo+' · papel: '+i.pessoas.join('+'))}">agenda ↗</a>`:''}
+      <a class="btn sec" target="_blank" href="${linhaCel(c,i.row,'F')}" style="text-decoration:none">planilha ↗</a>
+      <button class="btn sec" onclick="fecha('ov-atv')">Cancelar</button>
+      <button class="btn" id="at-salvar">Salvar</button>
+    </div>`;
+  document.getElementById('at-salvar').onclick=async ev=>{
+    const g=id=>document.getElementById(id).value;
+    const pessoa=g('at-resp'), sigla=SIGLA_POR_PESSOA[pessoa]||i.papel;
+    const feitoISO=g('at-feito');
+    // papel composto (ex: "SÓC+GT") vem do modelo, não é editável neste
+    // popup — o select de Responsável só tem 1 pessoa e destruiria a
+    // permissão de leitura de quem enxerga pelo papel composto (RLS por
+    // atividades.papel). Só reescreve a coluna C quando o papel já era
+    // simples (sem '+').
+    const eraComposto = String(i.papel||'').indexOf('+')!==-1;
+    const edits=[['D',g('at-ativ')],['B',g('at-tipo')],['F',feitoISO? fmtBRfull(feitoISO):''],['H',g('at-motivo')==='—'?'':g('at-motivo')]];
+    if(!eraComposto) edits.push(['C',sigla]);
+    const nota=g('at-nota').trim(); if(nota) edits.push(['I',(i.verif? i.verif+' · ':'')+nota]);
+    if(await gasSave({acao:'set',aba:c.aba,row:i.row,edits}, ev.target)){
+      i.ativ=g('at-ativ'); i.tipo=g('at-tipo');
+      if(!eraComposto){ i.papel=sigla; i.pessoas=[pessoa]; }
+      i.feito=feitoISO; i.motivo=g('at-motivo')==='—'?'':g('at-motivo');
+      if(feitoISO) i.cls='feito';
+      else if(i.cls==='feito') i.cls = i.prev&&i.prev<D.hoje ? (i.tipo==='QW'?'atraso_qw':'atrasado') : 'pendente';
+      setTimeout(()=>{fecha('ov-atv');render();},600);
+    }
+  };
+  abre('ov-atv');
+}
+const fmtBRfull = iso=>iso.split('-').reverse().join('/');
+
+// ---- navegação ----
+let VIEW='dashboard', CLI=null, ABA_CLI='etapas';
+const TITULOS={dashboard:['Visão geral','Dashboard'],clientes:['Clientes','Lista de Projetos'],cs:['Visão geral','Por Sucesso do Cliente'],calendario:['Planejamento','Calendário'],celebracoes:['Planejamento','Celebrações'],responsaveis:['Equipe','Responsáveis'],modelo:['Equipe','Modelo de Prazos'],config:['Sistema','Configurações'],usuarios:['Sistema','Usuários']};
+document.querySelectorAll('.nitem').forEach(n=>n.onclick=()=>{VIEW=n.dataset.v;CLI=null;render();});
+function vaiCliente(aba){ VIEW='clientes'; CLI=aba; ABA_CLI='etapas'; render(); window.scrollTo(0,0); }
+
+function render(){
+  if(!D) return;
+  if(MODO_APP && PERFIL && PERFIL.cargo!=='admin' && (VIEW==='responsaveis'||VIEW==='usuarios')) VIEW='dashboard';
+  const todos = D.clientes.flatMap(todosItens);
+  const qwT = todos.filter(i=>i.tipo==='QW');
+  document.getElementById('b-cli').textContent = D.clientes.length;
+  document.getElementById('b-qw').textContent = qwT.filter(i=>i.cls==='feito').length+'/'+qwT.length;
+  document.querySelectorAll('.nitem').forEach(x=>x.classList.toggle('on',x.dataset.v===VIEW));
+  const [ct,cb] = CLI? ['Clientes', D.clientes.find(c=>c.aba===CLI).nome] : TITULOS[VIEW];
+  document.getElementById('crumb-top').textContent=ct;
+  document.getElementById('crumb').textContent=cb;
+  const v=document.getElementById('view');
+  if(VIEW==='dashboard') return renderHome(v);
+  if(VIEW==='clientes') return CLI? renderCliente(v) : renderGaleria(v);
+  if(VIEW==='config') return renderConfig(v);
+  if(VIEW==='calendario') return renderCalendario(v);
+  if(VIEW==='cs') return renderCS(v);
+  if(VIEW==='celebracoes') return renderCelebracoes(v);
+  if(VIEW==='responsaveis') return renderResponsaveis(v);
+  if(VIEW==='modelo') return renderModelo(v);
+  if(VIEW==='usuarios') return renderUsuarios(v);
+  v.innerHTML=`<div class="constru"><b>${cb}</b>Tela em construção.</div>`;
+}
+
+// ---------- CELEBRAÇÕES (painel global; filtros mudam a visão) ----------
+function renderCelebracoes(v){
+  const its = clientesF().flatMap(c=>itensDe(c).filter(i=>i.tipo==='QW').map(i=>({c,...i})));
+  const conq = its.filter(i=>i.cls==='feito').sort((a,b)=>(b.feito||'').localeCompare(a.feito||''));
+  const prox = its.filter(i=>i.cls!=='feito');
+  const ant = conq.filter(i=>i.prev&&i.feito&&dt(i.feito)<dt(i.prev));
+  const diasAntes = i => Math.round((dt(i.prev)-dt(i.feito))/86400000);
+  v.innerHTML=`
+  <div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))">
+    <div class="tile" style="--tc:var(--laranja)"><small>★ Conquistadas</small><b style="color:var(--laranja)">${conq.length}</b><span>celebrações com o cliente</span></div>
+    <div class="tile" style="--tc:var(--amarelo)"><small>⚑ Próximas</small><b style="color:var(--amarelo)">${prox.length}</b><span>oportunidades de celebrar</span></div>
+    <div class="tile" style="--tc:var(--azul)"><small>⚡ Entregas antecipadas</small><b style="color:var(--azul)">${ant.length}</b><span>feitas antes do prazo</span></div>
+  </div>
+  <div class="box"><h2>★ Celebrações conquistadas <span class="bdg">${conq.length}</span></h2>
+    ${conq.length? conq.map(i=>`<div class="celeb" style="cursor:pointer" onclick="abreAtv('${esc(i.c.aba)}',${i.row})"><div class="star">★</div>
+      <div><b>${esc(i.ativ)}</b><small>${esc(i.c.nome)} · CS ${esc(i.c.cs)} · ${fmtLongo(dt(i.feito))}</small></div>
+      ${i.prev&&dt(i.feito)<dt(i.prev)?`<span class="pill p-ok" style="margin-left:auto;align-self:center">+${diasAntes(i)}d antes</span>`:''}</div>`).join('')
+    : '<div class="vazio">Nenhuma ainda no filtro atual. A primeira QW concluída (com verificação) entra aqui.</div>'}</div>
+  <div class="box" style="margin-top:14px"><h2>⚑ Próximas oportunidades <span class="bdg">${prox.length}</span></h2>
+    ${prox.slice(0,20).map(i=>`<div class="celeb" style="opacity:.75;cursor:pointer" onclick="abreAtv('${esc(i.c.aba)}',${i.row})"><div class="star" style="filter:grayscale(1)">★</div>
+      <div><b>${esc(i.ativ)}</b><small>${esc(i.c.nome)} · ${i.prev? 'prevista '+fmtCurto(dt(i.prev)) : esc(i.tempo)}</small></div>
+      ${i.cls==='atraso_qw'?'<span class="pill p-qw" style="margin-left:auto;align-self:center">★ Atraso QW</span>':''}</div>`).join('')}</div>`;
+}
+
+// ---------- RESPONSÁVEIS (equipe por cargo) ----------
+function renderResponsaveis(v){
+  const its = clientesF().flatMap(c=>itensDe(c).map(i=>({c,...i})));
+  const conta = filtro => {
+    const m = its.filter(filtro);
+    return { ab: m.filter(i=>i.cls!=='feito').length,
+             atr: m.filter(i=>['atrasado','atraso_qw'].includes(stEfetivo(i))).length,
+             ft: m.filter(i=>i.cls==='feito').length,
+             ant: m.filter(i=>i.cls==='feito'&&i.prev&&i.feito&&dt(i.feito)<dt(i.prev)).length };
+  };
+  const card = (nome,cargo,cor,n)=>`<div class="pscard" style="min-width:230px"><div class="ph"><span class="avatar" style="background:${cor}">${ini(nome)}</span>
+    <div><b>${esc(nome)}</b><small style="text-transform:uppercase;font-size:9.5px;letter-spacing:.08em">${cargo}</small></div></div>
+    <div style="display:flex;gap:16px;font-size:11px;color:var(--faint);text-align:center">
+      <div><b style="display:block;font-size:19px;color:var(--text)">${n.ab}</b>abertas</div>
+      <div><b style="display:block;font-size:19px;color:${n.atr?'var(--vermelho)':'var(--text)'}">${n.atr}</b>atrasadas</div>
+      <div><b style="display:block;font-size:19px;color:var(--verde)">${n.ft}</b>feitas</div>
+      <div><b style="display:block;font-size:19px;color:var(--azul)">${n.ant}</b>antes</div></div></div>`;
+  const grupo=(t,icone,cards)=>`<div class="box" style="margin-bottom:14px"><h2>${icone} ${t} <span class="bdg">${cards.length} pessoa${cards.length>1?'s':''}</span></h2>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">${cards.join('')}</div></div>`;
+  const porPessoa = p => i=>i.pessoas.includes(p);
+  v.innerHTML=`
+  <div class="aviso" style="margin-bottom:14px"><b>Modelo de time da Central:</b> cada cliente tem 1 CS e 1 gestor de tráfego; a Automação cobre o que na Burst é o dev; design é GT + IA de imagem (time compartilhado). Os admins têm visão geral de todos os clientes. Contadores respeitam os filtros do topo.</div>
+  ${grupo('Admin','⚙',[card('Pietro','Admin · exceções','var(--roxo)',conta(porPessoa('Pietro'))),card('Adão','Admin · dono da implantação','var(--laranja)',conta(porPessoa('Adão')))])}
+  ${grupo('Sucesso do Cliente','☺',[card('Adão','Sucesso do Cliente (interino)','var(--laranja)',conta(porPessoa('Adão')))])}
+  ${grupo('Gestores de Tráfego','◉',[card('Gestora','Gestor de Tráfego','var(--azul)',conta(porPessoa('Gestora')))])}
+  ${grupo('Automação','⚡',[card('Automação','IA / cron da casa','var(--verde)',conta(porPessoa('Automação')))])}
+  ${grupo('Lado do cliente','🏥',[card('Cliente','decisor da clínica','var(--amarelo)',conta(porPessoa('Cliente'))),card('CRC da clínica','crava no PMS','var(--amarelo)',conta(porPessoa('CRC da clínica')))])}`;
+}
+
+// ---------- MODELO DE PRAZOS (a base das automações) ----------
+let MODELO_TAB='sofia';
+function renderModelo(v){
+  const m=D.modelos[MODELO_TAB];
+  const TIPO_PILL=t=>t==='QW'?'<span class="pill p-cel">● Celebração</span>':t==='OV'?'<span class="pill p-mut" style="color:var(--roxo)">● Overdelivery</span>':'<span class="pill p-mut">● Processo</span>';
+  const PAPEL_PILL=p=>`<span class="pill p-mut"><b style="color:${COR_PAPEL(p)};font-weight:400">●</b> ${esc(PAPEL_NOME[p.split('+')[0].trim()]||p)}</span>`;
+  const total=m.fases.reduce((a,f)=>a+f.itens.length,0);
+  v.innerHTML=`
+  <div class="aviso" style="margin-bottom:14px"><b>Modelo padrão de prazos.</b> Este cronograma é aplicado automaticamente a todo cliente novo (menu Central &gt; Instanciar na planilha). A data do <b>kickoff realizado</b> marca o <span class="d0" style="color:var(--verde);font-weight:700">D+0</span> e os demais prazos são relativos a ela; o pré-kickoff (A+n) conta da assinatura. <b>Editar aqui embaixo = editar a base das automações</b>: o botão abre a aba do modelo na planilha, e o próximo cliente instanciado já nasce com a mudança.</div>
+  <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+    <div class="abas" style="margin:0"><span class="aba ${MODELO_TAB==='sofia'?'on':''}" onclick="MODELO_TAB='sofia';render()">Sofia (${D.modelos.sofia.fases.reduce((a,f)=>a+f.itens.length,0)})</span>
+    <span class="aba ${MODELO_TAB==='trafego'?'on':''}" onclick="MODELO_TAB='trafego';render()">Tráfego (${D.modelos.trafego.fases.reduce((a,f)=>a+f.itens.length,0)})</span></div>
+    <a class="btn sec" style="margin-left:auto;text-decoration:none" target="_blank" href="${D.url_planilha}/edit#gid=${m.gid}">✎ Editar modelo na planilha</a></div>
+  ${m.fases.map((f,ix)=>`<div class="box" style="margin-bottom:12px"><h2><span style="color:var(--laranja)">●</span> ${String(ix).padStart(2,'0')} ${esc(f.titulo)} <span class="bdg">${f.itens.length} atividades</span></h2>
+    ${f.desc?`<div class="mnote" style="margin-bottom:8px">${esc(f.desc)}</div>`:''}
+    <table><tr><th>Atividade</th><th>Tipo</th><th>Papel</th><th>Início</th><th>Duração</th></tr>
+    ${f.itens.map(i=>`<tr><td><b style="font-weight:600">${esc(i.ativ)}</b></td><td>${TIPO_PILL(i.tipo)}</td><td>${PAPEL_PILL(i.papel)}</td>
+      <td><span class="pill p-mut">${esc(i.tempo)}</span></td><td style="color:var(--faint);font-size:11px">marco</td></tr>`).join('')}</table></div>`).join('')}
+  <div class="mnote">Total: ${total} atividades neste modelo. Combo = Sofia + bloco de tráfego curado (regra §4 do plano; vive no instanciador).</div>`;
+}
+
+// ---------- CALENDÁRIO ----------
+const COR_PAPEL = p => p.includes('SÓC')?'var(--laranja)':p.includes('GT')?'var(--azul)':p.includes('IA')?'var(--verde)':p.includes('PIE')?'var(--roxo)':(p.includes('CLI')||p.includes('CRC'))?'var(--amarelo)':'var(--faint)';
+const corEv = i => i.cls==='atraso_qw'?'var(--vermelho)':i.tipo==='QW'?'var(--rosa)':stEfetivo(i)==='cliente'?'var(--amarelo)':COR_PAPEL(i.papel);
+let CAL_VIS = new Date(HOJE.getFullYear(), HOJE.getMonth(), 1);
+function renderCalendario(v){
+  const y=CAL_VIS.getFullYear(), m=CAL_VIS.getMonth();
+  const its = clientesF().flatMap(c=>itensDe(c).filter(i=>i.prev).map(i=>({c,...i})));
+  const porDia={}; its.forEach(i=>{(porDia[i.prev]=porDia[i.prev]||[]).push(i);});
+  const noMes = its.filter(i=>{const d=dt(i.prev);return d.getMonth()===m&&d.getFullYear()===y;}).length;
+  const ini0=new Date(y,m,1); const start=new Date(ini0); start.setDate(1-ini0.getDay());
+  let cels=['DOM','SEG','TER','QUA','QUI','SEX','SÁB'].map(d=>`<div class="caldow">${d}</div>`).join('');
+  for(let k=0;k<42;k++){
+    const d=new Date(start); d.setDate(start.getDate()+k);
+    const iso=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const evs=porDia[iso]||[];
+    const fora=d.getMonth()!==m, hoje=iso===D.hoje;
+    cels+=`<div class="caldia ${fora?'fora':''} ${hoje?'hoje':''}" onclick="abreDia('${iso}')">
+      <div class="dn">${d.getDate()}</div>
+      ${evs.slice(0,4).map(i=>`<div class="calev ${i.cls==='feito'?'done':''}" style="--ec:${corEv(i)}">${i.tipo==='QW'?'★ ':''}${esc(i.ativ)}</div>`).join('')}
+      ${evs.length>4?`<div class="calmais">+ ${evs.length-4} mais</div>`:''}</div>`;
+  }
+  v.innerHTML=`<div class="calhead">
+    <div class="calnav"><span onclick="CAL_VIS.setMonth(CAL_VIS.getMonth()-1);render()">‹</span><span onclick="CAL_VIS=new Date(HOJE.getFullYear(),HOJE.getMonth(),1);render()">Hoje</span><span onclick="CAL_VIS.setMonth(CAL_VIS.getMonth()+1);render()">›</span></div>
+    <h1>${MESL[m]} de ${y}</h1>
+    <div class="leg">
+      <i><b style="background:var(--laranja)"></b> CS</i><i><b style="background:var(--azul)"></b> Tráfego</i><i><b style="background:var(--verde)"></b> Automação</i><i><b style="background:var(--amarelo)"></b> Cliente/CRC</i><i><b style="background:var(--rosa)"></b> Celebração</i><i><b style="background:var(--vermelho)"></b> Atraso QW</i>
+    </div></div>
+  <div class="calsub">${noMes} atividade${noMes!==1?'s':''} no mês · clique em um dia para ver detalhes</div>
+  <div class="calgrid">${cels}</div>`;
+}
+function abreDia(iso){
+  const its = clientesF().flatMap(c=>itensDe(c).filter(i=>i.prev===iso).map(i=>({c,...i})));
+  if(!its.length) return;
+  const d=dt(iso);
+  document.getElementById('atv-corpo').innerHTML=`
+    <span class="fecha" onclick="fecha('ov-atv')">✕</span>
+    <h2>${DIAS[d.getDay()].toLowerCase()}, ${fmtLongo(d)}</h2><div class="sub">${its.length} atividade${its.length>1?'s':''} programada${its.length>1?'s':''}</div>
+    <div style="max-height:60vh;overflow:auto;margin-top:6px">
+    ${its.map(i=>{
+      const fase=i.c.fases.find(f=>f.itens.some(x=>x.row===i.row));
+      return `<div class="diaitem" style="--ec:${corEv(i)}" onclick="abreAtv('${esc(i.c.aba)}',${i.row})">
+      <div class="t"><b>${i.tipo==='QW'?'★ ':''}${esc(i.ativ)}</b><small>${esc(i.c.nome)} <em>· ${esc(fase.titulo.split(':')[0])} · ${esc(i.tempo)}</em></small></div>
+      <span class="fx"><span class="resp"><span class="mini">${ini(i.pessoas[0]||'?')}</span>${esc(i.pessoas[0]||'')}</span>${pillSt(i)}</span></div>`;}).join('')}
+    </div>
+    <div class="mfoot"><button class="btn" onclick="fecha('ov-atv')">Fechar</button></div>`;
+  abre('ov-atv');
+}
+
+// ---------- POR SUCESSO DO CLIENTE ----------
+function renderCS(v){
+  const cls=clientesF();
+  const porCS={}; cls.forEach(c=>{(porCS[c.cs]=porCS[c.cs]||[]).push(c);});
+  v.innerHTML=`<div class="pscards">${Object.entries(porCS).map(([cs,lista])=>{
+    const atr=lista.flatMap(itensDe).filter(i=>['atrasado','atraso_qw'].includes(stEfetivo(i))).length;
+    return `<div class="pscard"><div class="ph"><span class="avatar">${ini(cs)}</span>
+      <div><b>${esc(cs)}</b><small>${lista.length} cliente${lista.length>1?'s':''} · <span class="${atr?'bad':'ok'}">${atr} atrasada${atr!==1?'s':''}</span></small></div>
+      <span class="bdg">${lista.length}</span></div>
+      ${lista.map(c=>{
+        const its=todosItens(c), f=its.filter(i=>i.cls==='feito').length, p=its.length?Math.round(100*f/its.length):0;
+        const nQW=its.filter(i=>i.cls==='atraso_qw'&&stEfetivo(i)!=='cliente').length;
+        const nCli=its.filter(i=>stEfetivo(i)==='cliente').length;
+        const nAnt=its.filter(i=>i.cls==='feito'&&i.prev&&i.feito&&dt(i.feito)<dt(i.prev)).length;
+        const badges=[nQW?`<span class="pill p-qw">● ${nQW} QW</span>`:'',nCli?`<span class="pill p-hoje">● ${nCli} cli.</span>`:'',nAnt?`<span class="pill p-ok">● ${nAnt} antecipada${nAnt>1?'s':''}</span>`:'',(!nQW&&!nCli)?'<span class="pill p-ok">● Em dia</span>':''].filter(Boolean).join(' ');
+        return `<div class="psmini" onclick="vaiCliente('${esc(c.aba)}')">
+          <div class="lin1"><b>${esc(c.nome)}</b><span>${p}%</span></div>
+          <small>Onboarding ${fmtCurto(dt(c.assinatura))}</small>
+          <div class="gbar"><i style="width:${p}%"></i></div>
+          <div class="badges">${badges}</div></div>`;}).join('')}
+    </div>`;}).join('')}</div>`;
+}
+
+function renderConfig(v){
+  const admin = !MODO_APP || (PERFIL && PERFIL.cargo==='admin');
+  const identBox = MODO_APP && PERFIL
+    ? `<div class="box" style="max-width:680px"><h2>☺ Sua identidade</h2>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span class="avatar" style="width:34px;height:34px;font-size:12px">${esc(ini(PERFIL.nome||PERFIL.email))}</span>
+    <div><b>${esc(PERFIL.nome||PERFIL.email)}</b><div class="mnote" style="text-transform:uppercase;font-size:9.5px;letter-spacing:.08em">${esc(CARGO_LABEL[PERFIL.cargo]||PERFIL.cargo)} · ${PERFIL.aprovado?'acesso aprovado':'aguardando aprovação'}</div></div></div>
+    <div class="mnote">${esc(PERFIL.email)}</div>
+    <button class="btn sec" style="margin-top:10px" onclick="tourIniciar()">↻ Rever tour</button></div>`
+    : `<div class="box" style="max-width:680px"><h2>☺ Sua identidade</h2>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span class="avatar" style="width:34px;height:34px;font-size:12px">PH</span>
+    <div><b>Pietro Hummel</b><div class="mnote" style="text-transform:uppercase;font-size:9.5px;letter-spacing:.08em">Admin · acesso total</div></div></div>
+    <div class="mnote" style="border-left:2px solid var(--laranja);padding-left:10px;margin-bottom:10px">Login individual e RBAC por cargo já rodam no app.html (Fase 5 / Supabase). Este arquivo local segue sem login — é a cópia de trabalho do Pietro.</div>
+    <button class="btn sec" onclick="tourIniciar()">↻ Rever tour</button></div>`;
+  if(!admin){
+    v.innerHTML = identBox + blocoAgendaPessoal() + `
+    <div class="box" style="max-width:680px;margin-top:14px"><h2>⚙ Geral</h2>
+    <div style="margin-bottom:10px"><b style="font-size:13px">Backup</b>
+    <div class="mnote" style="margin:4px 0 8px">Snapshot do que você está vendo agora (respeita o que seu cargo enxerga), em JSON.</div>
+    <button class="btn" onclick="baixarSnapshot()">💾 Exportar snapshot (JSON)</button></div></div>`;
+    initGcalBotoes();
+    return;
+  }
+  v.innerHTML=identBox+`
+
+  <div class="box" style="max-width:680px;margin-top:14px"><h2>⟳ Sincronização ClickUp <span class="bdg">conta Hawki dedicada</span></h2>
+    <div class="mnote" style="margin-bottom:8px">Importa os onboardings reais da lista do ClickUp (conta específica da Hawki, token próprio — NÃO a conta antiga). Campos lidos por nome: <b>Data de início</b> (vira âncora A) e <b>Tipo de serviço</b> (decide Sofia/Tráfego/Combo). O ClickUp é só LEITURA — o sync escreve na planilha, nunca lá.</div>
+    <div class="mgrid" style="margin-bottom:10px">
+      <div><label>Token pessoal (pk_...)</label><input id="cu-token" type="password" placeholder="pk_..."></div>
+      <div><label>ID da lista de Onboardings</label><input id="cu-list" placeholder="ex: 901714013410 (número na URL da lista)"></div>
+    </div>
+    <button class="btn sec" id="cu-salvar">Salvar conexão (fica no Apps Script, não aqui)</button>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn" id="cu-buscar">⤓ Buscar novos clientes do ClickUp</button>
+      <button class="btn sec" id="cu-equipe">👥 Atualizar dados do ClickUp</button>
+      <button class="btn sec" style="opacity:.5" onclick="alert('\"Limpar tudo e importar\" NÃO existe na versão Hawki, de propósito: apagar aba de cliente é sempre manual na planilha (regra da casa: nunca apagar de verdade por botão).')">🧹 Limpar tudo e importar</button>
+    </div>
+    <div id="cu-out" style="margin-top:10px"></div>
+    <div class="mnote" style="margin-top:8px;border-left:2px solid var(--laranja);padding-left:10px"><b>"Buscar novos"</b> só adiciona clientes que ainda não têm aba (não duplica) e mostra a lista pra você confirmar antes de instanciar. <b>"Atualizar dados"</b> atualiza metadados (aniversário etc.) dos já importados sem mexer em atividades/datas.</div></div>
+
+  <div class="box" style="max-width:680px;margin-top:14px"><h2>🤖 Sinais da Sofia <span class="bdg">desenho aprovado, aguarda token GPI</span></h2>
+    <div class="mnote">A Sofia vai abastecer o painel com SINAIS de marco por tenant (1º agendamento real, porta aberta 24h, canal conectado) que aparecem como "QW pronta pra verificar" — o humano confere com print e aí celebra. Nunca celebração automática (regra anti confirmação fantasma do Plano Mestre). Destrave técnico: token read-only da API Sofia, pedido à GPI desde 22/07 (S3).</div></div>
+
+  <div class="box" style="max-width:680px;margin-top:14px"><h2>⚙ Escrita na planilha (API do painel)</h2>
+    <div class="mnote" style="margin-bottom:10px">Com isso o Salvar do popup, o arrastar do Kanban e os campos de Informações gravam direto na planilha. Setup de ~2 min, UMA vez:</div>
+    <ol style="font-size:13px;color:var(--muted);padding-left:18px;line-height:2">
+      <li>Abrir a <a href="${D.url_planilha}" target="_blank" style="color:var(--azul)">planilha da Central</a> → Extensões → Apps Script (o mesmo script do instanciador — versão atualizada em <code>central/instanciador.gs</code> do repo, já com a API).</li>
+      <li>Implantar → Nova implantação → tipo <b>App da Web</b> → executar como <b>você</b> → acesso: <b>qualquer pessoa com o link</b> → Implantar.</li>
+      <li>Copiar a URL <code>/exec</code> e colar aqui embaixo.</li>
+    </ol>
+    <label style="display:block;font-size:10px;letter-spacing:.1em;color:var(--faint);text-transform:uppercase;margin:10px 0 4px">URL do App da Web (termina em /exec)</label>
+    <input id="cfg-api" style="width:100%" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(API())}">
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn" id="cfg-salvar">Salvar e testar</button>
+    <span class="mnote" id="cfg-st" style="align-self:center">${API()? '● configurada':'○ não configurada — painel em modo leitura'}</span></div>
+  </div>
+  <div class="box" style="max-width:680px;margin-top:14px"><h2>▤ Agenda Google (sync do time)</h2>
+    <div class="mnote" style="margin-bottom:8px">O sync roda pelo mesmo Apps Script: menu <b>Central &gt; Sincronizar agenda Google</b> na planilha cria/atualiza a agenda compartilhada <b>"Central de Projetos Hawki"</b> com as atividades previstas dos próximos 120 dias (dá pra agendar um acionador diário no Apps Script: Acionadores &gt; + &gt; sincronizarAgenda &gt; diário). Cada pessoa do time:</div>
+    <ol style="font-size:13px;color:var(--muted);padding-left:18px;line-height:2">
+      <li>O sync cria <b>uma agenda POR PESSOA</b>: "Central · Adão", "Central · Gestora", "Central · Pietro"… com só as atividades daquela pessoa.</li>
+      <li>Pietro compartilha cada agenda SÓ com a pessoa dona (Google Calendar &gt; config da agenda &gt; compartilhar) — o CS vê só o que é dele.</li>
+      <li>Admin/supervisor assina todas as agendas = visão geral.</li>
+    </ol>
+    <div class="mnote">Pra evento avulso, o popup de qualquer atividade tem o botão "agenda ↗".</div></div>
+  ${blocoAgendaPessoal()}
+  <div class="box" style="max-width:680px;margin-top:14px"><h2>⚙ Geral</h2>
+    <div style="margin-bottom:10px"><b style="font-size:13px">Backup</b>
+    <div class="mnote" style="margin:4px 0 8px">A fonte de verdade é a planilha (o Google versiona sozinha: Arquivo &gt; Histórico de versões). O snapshot abaixo baixa o que o painel está lendo agora (clientes + atividades + modelos), em JSON.</div>
+    <button class="btn" onclick="baixarSnapshot()">💾 Exportar snapshot (JSON)</button></div>
+    <div><b style="font-size:13px">Regras de time</b>
+    <div class="mnote" style="margin-top:4px">• 1 CS · 1 Gestor de tráfego por cliente · Automação cobre o dev · design = GT + IA de imagem (compartilhado) · Admin vê tudo</div></div></div>`;
+  document.getElementById('cu-salvar').onclick=async ev=>{
+    const token=document.getElementById('cu-token').value.trim(), list=document.getElementById('cu-list').value.trim();
+    if(!token&&!list) return alert('Preencha token e/ou list ID.');
+    const okk=await gasSave({acao:'cfg_clickup',token,list}, ev.target);
+    if(okk){ document.getElementById('cu-token').value=''; }
+  };
+  document.getElementById('cu-buscar').onclick=async ev=>{
+    const out=document.getElementById('cu-out'); out.innerHTML='<span class="mnote">… consultando ClickUp via Apps Script</span>';
+    const url=API(); if(!url){ out.innerHTML=''; return alert('Configure primeiro a API do painel (seção Escrita na planilha).'); }
+    try{
+      const corpoCk={k:API_TOKEN,acao:'clickup_preview'};
+      if(MODO_APP && SESSAO && SESSAO.access_token) corpoCk.sb_token=SESSAO.access_token;
+      else if(!MODO_APP && K_LOCAL) corpoCk.k_local=K_LOCAL;
+      const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(corpoCk)});
+      const j=await r.json();
+      if(!j.ok) throw new Error(j.erro);
+      const novos=j.candidatos.filter(c=>!c.ja_existe);
+      out.innerHTML = j.candidatos.length? `<table><tr><th></th><th>Cliente</th><th>Tipo</th><th>Início</th><th>Status</th></tr>${
+        j.candidatos.map((c,ix)=>`<tr><td>${c.ja_existe?'✓':`<input type="checkbox" class="cu-ck" data-nome="${esc(c.nome)}" ${c.inicio?'checked':''}>`}</td>
+        <td>${esc(c.nome)}${c.ja_existe?' <span class="mnote">(já na Central)</span>':''}</td><td>${esc(c.tipo_label)}</td><td>${esc(c.inicio)||'—'}</td><td>${esc(c.status)}</td></tr>`).join('')}</table>
+        ${novos.length?`<button class="btn" style="margin-top:8px" id="cu-importar">Instanciar ${novos.length} selecionado(s)</button>`:'<div class="mnote" style="margin-top:6px">Nenhum cliente novo — tudo já está na Central.</div>'}`
+        : '<div class="mnote">Nenhum onboarding aberto na lista.</div>';
+      const bi=document.getElementById('cu-importar');
+      if(bi) bi.onclick=async ev2=>{
+        const nomes=[...out.querySelectorAll('.cu-ck:checked')].map(x=>x.dataset.nome);
+        if(!nomes.length) return alert('Nenhum selecionado.');
+        if(await gasSave({acao:'clickup_importar',nomes}, ev2.target)){ out.innerHTML='<span class="mnote">✓ Instanciados. O painel mostra no próximo build (ou rode dashboard/build_central.py).</span>'; }
+      };
+    }catch(e){ out.innerHTML='<span class="mnote" style="color:var(--vermelho)">✕ '+esc(e.message)+'</span>'; }
+  };
+  document.getElementById('cu-equipe').onclick=async ev=>{
+    if(await gasSave({acao:'clickup_equipe'}, ev.target)) alert('Metadados atualizados a partir do ClickUp (sem tocar em atividades).');
+  };
+  document.getElementById('cfg-salvar').onclick=async ev=>{
+    const url=document.getElementById('cfg-api').value.trim();
+    if(!url){ localStorage.removeItem('central_api'); document.getElementById('cfg-st').textContent='○ removida — modo leitura'; return; }
+    localStorage.setItem('central_api',url);
+    const st=document.getElementById('cfg-st'); st.textContent='… testando';
+    try{
+      const r=await fetch(url+'?ping=1'); const j=await r.json();
+      st.textContent = j.ok? '✓ conectada — escrita ativa' : '✕ respondeu mas sem ok — conferir implantação';
+    }catch(e){ st.textContent='✕ não conectou — conferir URL/implantação'; }
+  };
+  initGcalBotoes();
+}
+
+// ---------- HOME ----------
+function renderHome(v){
+  const cls = clientesF();
+  const its = cls.flatMap(c=>itensDe(c).map(i=>({c,...i})));
+  const st=stEfetivo;
+  const demandasHoje=its.filter(i=>st(i)==='hoje'), atrasoQW=its.filter(i=>i.cls==='atraso_qw'&&st(i)!=='cliente');
+  const aguardCli=its.filter(i=>st(i)==='cliente'), atrasoPP=its.filter(i=>i.cls==='atrasado'&&st(i)!=='cliente');
+  const feitos=its.filter(i=>i.cls==='feito'), noPrazo=its.filter(i=>st(i)==='pendente');
+  const antecip=feitos.filter(i=>i.prev&&i.feito&&dt(i.feito)<dt(i.prev));
+  const qwFeitas=its.filter(i=>i.tipo==='QW'&&i.cls==='feito'), qwTotal=its.filter(i=>i.tipo==='QW');
+
+  const porCS={}; cls.forEach(c=>{(porCS[c.cs]=porCS[c.cs]||[]).push(c);});
+  const pcs=Object.entries(porCS).map(([cs,lista])=>{
+    const h=lista.flatMap(itensDe).filter(i=>st(i)==='hoje').length;
+    const a=lista.flatMap(itensDe).filter(i=>st(i)==='atrasado'||st(i)==='atraso_qw').length;
+    return `<div class="cscard"><div class="cshead"><span class="mini">${ini(cs)}</span>${esc(cs)}<span class="csres">${h?h+'h ':''}${a?a+'!':''}</span></div>
+      ${lista.map(c=>{const ci=itensDe(c);
+        const nh=ci.filter(i=>st(i)==='hoje').length,na=ci.filter(i=>st(i)==='atrasado'||st(i)==='atraso_qw').length,nc=ci.filter(i=>st(i)==='cliente').length;
+        return `<div class="cscli" onclick="vaiCliente('${esc(c.aba)}')">${esc(c.nome)}<span class="nums"><span class="num ${nh?'lar':''}">${nh}</span><span class="num ${na?'ver':''}">${na}</span><span class="num ${nc?'ama':''}">${nc}</span></span></div>`;}).join('')}
+    </div>`;}).join('');
+
+  const atras=[...atrasoQW,...atrasoPP].sort((a,b)=>(a.prev||'9999').localeCompare(b.prev||'9999'));
+  const atTable=atras.length? `<table><tr><th>Cliente</th><th>Atividade</th><th>Responsável</th><th>Venceu em</th><th></th></tr>${
+    atras.slice(0,12).map(i=>{const d=dt(i.prev),n=d?-diasAte(d):0;
+      return `<tr style="cursor:pointer" onclick="abreAtv('${esc(i.c.aba)}',${i.row})"><td><b>${esc(i.c.nome)}</b><br><small style="color:var(--faint)">CS ${esc(i.c.cs)}</small></td>
+      <td>${esc(i.ativ)}</td><td><span class="resp"><span class="mini">${ini(i.pessoas[0]||'?')}</span>${esc(i.pessoas.join(' + '))}</span></td>
+      <td class="venc">${fmtCurto(d)}<small>há ${n} dia${n>1?'s':''}</small></td>
+      <td>${i.cls==='atraso_qw'?'<span class="pill p-qw">★ Atraso QW</span>':'<span class="pill p-atr">● Atrasado</span>'}</td></tr>`;}).join('')}</table>`
+    : '<div class="vazio">Nada atrasado sob nossa responsabilidade no filtro atual ✅</div>';
+
+  const prox=its.filter(i=>st(i)==='pendente'||st(i)==='hoje').filter(i=>i.prev&&diasAte(dt(i.prev))>=0&&diasAte(dt(i.prev))<=7).sort((a,b)=>a.prev.localeCompare(b.prev));
+  const pvTable=prox.length? `<table><tr><th>Quando</th><th>Cliente</th><th>Atividade</th><th>Responsável</th></tr>${
+    prox.slice(0,14).map(i=>{const d=dt(i.prev),n=diasAte(d);
+      return `<tr style="cursor:pointer" onclick="abreAtv('${esc(i.c.aba)}',${i.row})"><td class="quando"><b class="${n===0?'hoje':''}">${n===0?'Hoje':'Em '+n+' dia'+(n>1?'s':'')}</b><small>${fmtCurto(d)}</small></td>
+      <td>${esc(i.c.nome)}</td><td>${i.tipo==='QW'?'★ ':''}${esc(i.ativ)}</td>
+      <td><span class="resp"><span class="mini">${ini(i.pessoas[0]||'?')}</span>${esc(i.pessoas.join(' + '))}</span></td></tr>`;}).join('')}</table>`
+    : '<div class="vazio">Nenhum vencimento nos próximos 7 dias no filtro atual (kickoff sem data trava os D+n — preencher a âncora na planilha).</div>';
+
+  const celebs=qwFeitas.sort((a,b)=>(b.feito||'').localeCompare(a.feito||''));
+  const celHtml=celebs.length? celebs.slice(0,5).map(i=>`<div class="celeb"><div class="star">★</div><div><b>${esc(i.ativ)}</b><small>${esc(i.c.nome)} · CS ${esc(i.c.cs)} · ${fmtCurto(dt(i.feito))}</small></div></div>`).join('')
+    : '<div class="vazio">Nenhuma celebração desbloqueada ainda. A primeira QW concluída (com verificação) aparece aqui pra mandar no grupo.</div>';
+
+  const anivs = cls.filter(c=>c.aniversario).map(c=>{
+    const a=dt(c.aniversario); const prox=new Date(HOJE.getFullYear(),a.getMonth(),a.getDate());
+    if(prox<HOJE) prox.setFullYear(prox.getFullYear()+1);
+    return {c, prox, n:diasAte(prox)};
+  }).filter(x=>x.n<=30).sort((a,b)=>a.n-b.n);
+  const anivHtml = anivs.length? anivs.map(x=>`<div class="lin"><span class="mini">${ini(x.c.nome)}</span>${esc(x.c.nome)}<span>${x.n}d</span></div>`).join('')
+    : '<div class="vazio">sem aniversário nos próximos 30d (cadastrar na aba do cliente, célula H1)</div>';
+  const onb=cls.filter(c=>c.assinatura&&diasAte(dt(c.assinatura))>=-30).map(c=>`<div class="lin"><span class="mini">${ini(c.nome)}</span>${esc(c.nome)}<span>${fmtCurto(dt(c.assinatura))}</span></div>`).join('')||'<div class="vazio">—</div>';
+
+  v.innerHTML=`
+  <div class="hero"><div class="hero-top">
+    <div><small>Hoje</small><h1>${DIAS[HOJE.getDay()]}, ${HOJE.getDate()} de ${MESL[HOJE.getMonth()]}</h1></div>
+    <div class="hero-kpis">
+      <div class="hk lar"><b>${demandasHoje.length}</b><span>demandas hoje</span></div>
+      <div class="hk ver"><b>${atrasoQW.length}</b><span>atraso QW</span></div>
+      <div class="hk ama"><b>${aguardCli.length}</b><span>aguardando cliente</span></div>
+    </div></div>
+    <div class="pcs-lbl">Por sucesso do cliente</div><div class="pcs">${pcs}</div>
+  </div>
+  <div class="tiles">
+    <div class="tile" style="--tc:var(--laranja)"><small>▢ Clientes ativos</small><b>${cls.length}</b><span>de ${D.clientes.length} no total</span></div>
+    <div class="tile" style="--tc:var(--laranja2)"><small>≋ Atividades</small><b>${its.length}</b><span>${feitos.length} concluídas no período</span></div>
+    <div class="tile" style="--tc:var(--vermelho)"><small>⚠ Atraso QW</small><b>${atrasoQW.length}</b><span>sob nossa responsabilidade</span></div>
+    <div class="tile" style="--tc:var(--amarelo)"><small>◔ Aguardando cliente</small><b>${aguardCli.length}</b><span>dependência do cliente</span></div>
+    <div class="tile" style="--tc:var(--verde)"><small>✓ No prazo</small><b>${noPrazo.length}</b><span>em execução agora</span></div>
+    <div class="tile" style="--tc:var(--amarelo)"><small>★ Celebrações</small><b>${qwFeitas.length}<i>/${qwTotal.length}</i></b><span>conquistadas com clientes</span></div>
+    <div class="tile" style="--tc:var(--azul)"><small>⚡ Antecipadas</small><b>${antecip.length}</b><span>entregues antes do prazo</span></div>
+  </div>
+  <div class="cols"><div>
+      <div class="box"><h2>⚠️ Atenção imediata <span class="bdg">${atrasoQW.length} QW · ${aguardCli.length} cliente</span></h2>${atTable}</div>
+      <div class="box" style="margin-top:14px"><h2>🕐 Próximos vencimentos <span class="bdg">próximos 7 dias</span></h2>${pvTable}</div>
+    </div><div>
+      <div class="box"><h2>★ Celebrações recentes <span class="bdg">${qwFeitas.length}</span></h2>${celHtml}</div>
+      <div class="box" style="margin-top:14px"><h2>✦ Agenda da semana <span class="bdg">hoje · ${DIAS[HOJE.getDay()].toLowerCase()}, ${HOJE.getDate()} de ${MES[HOJE.getMonth()]}</span></h2>
+        <div class="agenda"><div><div class="glbl">Aniversários próximos (30 dias)</div>${anivHtml}</div>
+        <div><div class="glbl">Onboarding recente (30 dias)</div>${onb}</div></div>
+        <div class="nota">Para navegar entre clientes, use <b>Clientes</b> no menu.</div>
+      </div></div></div>`;
+}
+
+// ---------- GALERIA DE CLIENTES ----------
+let GAL_MODO = localStorage.getItem('central_gal')||'galeria';
+function renderGaleria(v){
+  const cls=clientesF();
+  const cards=cls.map(c=>{
+    const its=todosItens(c);
+    const f=its.filter(i=>i.cls==='feito').length, p=its.length?Math.round(100*f/its.length):0;
+    const nQW=its.filter(i=>i.cls==='atraso_qw'&&stEfetivo(i)!=='cliente').length;
+    const nCli=its.filter(i=>stEfetivo(i)==='cliente').length;
+    const badge = nQW? `<span class="pill p-qw">● ${nQW} QW</span>${nCli?` <span class="pill p-hoje">● ${nCli} cli.</span>`:''}`
+      : nCli? `<span class="pill p-hoje">● ${nCli} cli.</span>`
+      : `<span class="pill p-ok">● Em dia</span>`;
+    return `<div class="gcard" onclick="vaiCliente('${esc(c.aba)}')"><div class="capa"></div><div class="corpo">
+      <div class="gava">${ini(c.nome)}</div><h3>${esc(c.nome)}</h3>
+      <span class="gchip"><span class="mini">${ini(c.cs)}</span>CS ${esc(c.cs)}</span>
+      <div class="gdatas"><span>🗓 ${fmtCurto(dt(c.assinatura))}</span><span class="ani">★ ${c.aniversario? fmtCurto(dt(c.aniversario)):'aniv. —'}</span></div>
+      <div class="gbar"><i style="width:${p}%"></i></div>
+      <div class="gfoot">${f}/${its.length} · ${p}% ${badge}</div>
+    </div></div>`;}).join('');
+  const tab=`<div class="box"><table><tr><th>Cliente</th><th>CS</th><th>Serviço</th><th>Onboarding</th><th>Progresso</th><th>Estado</th></tr>${
+    cls.map(c=>{const its=todosItens(c);const f=its.filter(i=>i.cls==='feito').length,p=its.length?Math.round(100*f/its.length):0;
+      const nQW=its.filter(i=>i.cls==='atraso_qw').length;
+      return `<tr style="cursor:pointer" onclick="vaiCliente('${esc(c.aba)}')"><td><b>${esc(c.nome)}</b></td><td>${esc(c.cs)}</td><td>${esc(c.servico)}</td>
+      <td>${fmtCurto(dt(c.assinatura))}</td><td>${f}/${its.length} · ${p}%</td>
+      <td>${nQW?`<span class="pill p-qw">● ${nQW} QW</span>`:'<span class="pill p-ok">● Em dia</span>'}</td></tr>`;}).join('')}</table></div>`;
+  v.innerHTML=`<div class="gal-top"><div class="info"><b>${cls.length} cliente${cls.length>1?'s':''}</b>Galeria de todos os clientes. Clique em um card para abrir a página completa.</div>
+    <div class="right"><button class="btn sec" onclick="alert('Sincronização com o ClickUp (lista Onboardings) entra na Fase 4 — cliente novo vai virar aba sozinho.')">⟳ Sincronizar ClickUp</button>
+    <button class="btn ${GAL_MODO==='galeria'?'':'sec'}" onclick="GAL_MODO='galeria';localStorage.setItem('central_gal','galeria');render()">▦ Galeria</button>
+    <button class="btn ${GAL_MODO==='tabela'?'':'sec'}" onclick="GAL_MODO='tabela';localStorage.setItem('central_gal','tabela');render()">≣ Tabela</button></div></div>
+    ${GAL_MODO==='galeria'? `<div class="gal">${cards}</div>` : tab}`;
+}
+
+// ---------- PÁGINA DO CLIENTE ----------
+function renderCliente(v){
+  const c=D.clientes.find(x=>x.aba===CLI);
+  const its=todosItens(c);
+  const f=its.filter(i=>i.cls==='feito').length, p=its.length?Math.round(100*f/its.length):0;
+  const nQW=its.filter(i=>i.cls==='atraso_qw'&&stEfetivo(i)!=='cliente').length;
+  const nCli=its.filter(i=>stEfetivo(i)==='cliente').length;
+  const antecip=its.filter(i=>i.cls==='feito'&&i.prev&&i.feito&&dt(i.feito)<dt(i.prev)).length;
+  const qwF=its.filter(i=>i.tipo==='QW'&&i.cls==='feito'), qwT=its.filter(i=>i.tipo==='QW');
+
+  const abas=[['etapas','Etapas'],['lista','Lista'],['kanban','Kanban'],['gantt','Gantt'],['celebracoes',`Celebrações (${qwF.length}/${qwT.length})`],['informacoes','Informações'],['metas','Metas extras'],['historico','Histórico']];
+  let corpo='';
+  if(ABA_CLI==='etapas'){
+    corpo=c.fases.map((fa,ix)=>{
+      const ff=fa.itens.filter(i=>i.cls==='feito').length;
+      const na=fa.itens.filter(i=>i.cls==='atrasado'||i.cls==='atraso_qw').length;
+      return `<details class="fasebox" ${na||ix===0?'open':''}><summary><span class="dot" style="background:${na?'var(--vermelho)':ff===fa.itens.length?'var(--verde)':'var(--laranja)'}"></span>
+        <div><b>${esc(fa.titulo)}</b><small>${esc(fa.desc)}</small></div>
+        <span class="fx">${na?`<span class="pill p-atr">● ${na}</span>`:''}<span>${ff}/${fa.itens.length}</span></span></summary>
+        ${fa.itens.map(i=>fitem(c,i)).join('')}</details>`;}).join('');
+  }
+  if(ABA_CLI==='lista'){
+    corpo=`<div class="box"><table><tr><th>Tempo</th><th>Atividade</th><th>Tipo</th><th>Responsável</th><th>Prazo</th><th>Feito</th><th>Status</th></tr>${
+      its.map(i=>`<tr style="cursor:pointer" onclick="abreAtv('${esc(c.aba)}',${i.row})"><td>${esc(i.tempo)}</td><td>${i.tipo==='QW'?'★ ':''}${esc(i.ativ)}</td><td>${esc(i.tipo)}</td>
+      <td>${esc(i.pessoas.join(' + '))}</td><td>${i.prev?fmtCurto(dt(i.prev)):'—'}</td><td>${i.feito?fmtCurto(dt(i.feito)):'—'}</td><td>${pillSt(i)}</td></tr>`).join('')}</table></div>`;
+  }
+  if(ABA_CLI==='kanban'){
+    const col=(key,t,cor,lista,nota)=>`<div class="kbcol" data-col="${key}" ondragover="event.preventDefault()" ondrop="kbDrop(event,'${esc(c.aba)}','${key}')"><h3><span style="color:${cor}">●</span> ${t}<span class="n">${lista.length}</span></h3>
+      ${lista.length? lista.map(i=>`<div class="kbcard" draggable="true" ondragstart="event.dataTransfer.setData('text/plain','${i.row}')" style="--kc:${cor}" onclick="abreAtv('${esc(c.aba)}',${i.row})"><span class="mini">${ini(i.pessoas[0]||'?')}</span>${i.tipo==='QW'?'★ ':''}${esc(i.ativ)}<small>${esc(i.tempo)}${i.prev?' · '+fmtCurto(dt(i.prev)):''}</small></div>`).join('') : `<div class="vazio">${nota||'Sem atividades'}</div>`}</div>`;
+    corpo=`<div class="mnote" style="margin-bottom:8px">Arraste um card pra <b>Concluído</b> pra marcar feito hoje (ou de volta pra desfazer). Pendente/Atrasado nascem do prazo — não são arrastáveis entre si.</div><div class="kb">
+      ${col('pendente','Pendente','var(--amarelo)',its.filter(i=>['pendente','hoje','sem_prazo'].includes(stEfetivo(i))))}
+      ${col('andamento','Em andamento','var(--verde)',[],'Status manual entra quando houver necessidade real (na Burst também é automático)')}
+      ${col('atrasado','Atrasado','var(--vermelho)',its.filter(i=>['atrasado','atraso_qw','cliente'].includes(stEfetivo(i))))}
+      ${col('feito','Concluído','var(--azul)',its.filter(i=>i.cls==='feito'))}</div>`;
+  }
+  if(ABA_CLI==='gantt'){
+    const com=its.filter(i=>i.prev);
+    if(!com.length) corpo='<div class="box vazio">Sem datas previstas ainda (preencher âncoras na planilha).</div>';
+    else{
+      const min=dt(com.reduce((a,b)=>a.prev<b.prev?a:b).prev), max=dt(com.reduce((a,b)=>a.prev>b.prev?a:b).prev);
+      const span=Math.max(1,(max-min)/86400000);
+      const marcas=[]; for(let k=0;k<=4;k++){const d=new Date(min.getTime()+span*86400000*k/4);marcas.push(`<span style="left:${k*25}%">${d.getDate()}/${d.getMonth()+1}</span>`);}
+      corpo=`<div class="gantt"><div class="eixo"><span></span><div class="esc">${marcas.join('')}</div></div>${
+        com.map(i=>{const pos=((dt(i.prev)-min)/86400000)/span*100;
+        const cor=i.cls==='feito'?'var(--verde)':(i.cls==='atrasado'||i.cls==='atraso_qw')?'var(--vermelho)':'var(--laranja)';
+        return `<div class="grow"><span>${i.tipo==='QW'?'★ ':'◆ '}${esc(i.ativ)}</span><div class="lane"><div class="bar" style="left:${Math.min(pos,96)}%;background:${cor}" title="${esc(i.prev)}" onclick="abreAtv('${esc(c.aba)}',${i.row})">${ini(i.pessoas[0]||'?')}</div></div></div>`;}).join('')}</div>`;
+    }
+  }
+  if(ABA_CLI==='celebracoes'){
+    corpo=(qwF.length?qwF.map(i=>`<div class="celeb"><div class="star">★</div><div><b>${esc(i.ativ)}</b><small>conquistada em ${fmtLongo(dt(i.feito))}</small></div><span class="pill p-cel">★ Celebrada</span></div>`).join(''):'')+
+      qwT.filter(i=>i.cls!=='feito').map(i=>`<div class="celeb" style="opacity:.7"><div class="star" style="filter:grayscale(1)">★</div><div><b>${esc(i.ativ)}</b><small>${i.prev? 'prevista '+fmtCurto(dt(i.prev)) : esc(i.tempo)}${i.verif? ' · '+esc(i.verif):''}</small></div>${i.cls==='atraso_qw'?'<span class="pill p-qw">★ Atraso QW</span>':'<span class="pill p-mut">a conquistar</span>'}</div>`).join('');
+  }
+  if(ABA_CLI==='informacoes') corpo=`
+    <div class="box"><h2>💬 Informações do cliente</h2>
+      <div class="mnote" style="margin-bottom:8px">Use este espaço para registrar informações relevantes do cliente: histórico da empresa, diferencial, público-alvo, canais de comunicação preferidos, pessoas de contato, preferências de atendimento, etc.</div>
+      <textarea id="cli-info" style="width:100%;min-height:120px" placeholder="Registre aqui tudo que for importante sobre este cliente...">${esc(c.info)}</textarea>
+      <div style="display:flex;align-items:center;margin-top:8px"><span class="mnote">${c.info?'':'Ainda sem conteúdo'}</span>
+      <button class="btn" style="margin-left:auto" onclick="salvaCampo(event,'${esc(c.aba)}','K1','cli-info','info')">Salvar informações</button></div></div>
+    <div class="box" style="margin-top:14px"><h2>〰 Observações rápidas</h2>
+      <textarea id="cli-obs" style="width:100%;min-height:90px" placeholder="Notas curtas visíveis no topo da página do cliente...">${esc(c.obs)}</textarea>
+      <div style="display:flex;align-items:center;margin-top:8px"><span class="mnote">Aparece como destaque acima das abas.</span>
+      <button class="btn" style="margin-left:auto" onclick="salvaCampo(event,'${esc(c.aba)}','K2','cli-obs','obs')">Salvar observações</button></div></div>`;
+  if(ABA_CLI==='metas') corpo=`<div class="box"><h2>◎ Metas extras do cliente</h2><div class="mnote">Metas específicas deste cliente além do modelo padrão. Ex: "Atingir 100 leads em 30 dias", "Gravar 5 vídeos em abril".</div><div class="vazio" style="text-align:center;padding:26px">◎<br>Nenhuma meta extra cadastrada<br><span style="font-size:11px">na v1, meta extra entra como linha nova no fim da aba do cliente na planilha (tempo "sem prazo"); o painel lê e mostra junto das atividades</span></div></div>`;
+  if(ABA_CLI==='historico') corpo=`<div class="box"><div class="aviso">O histórico completo (log de alterações) entra na Fase 5, quando o dado sair da planilha pro banco. Por ora o histórico é o próprio versionamento do Google Sheets (Arquivo &gt; Histórico de versões).</div></div>`;
+
+  v.innerHTML=`<span class="cli-volta" onclick="CLI=null;render()">← Voltar para clientes</span>
+  <div class="cli-capa"></div><div class="cli-head"><div class="cli-ava">${ini(c.nome)}</div><h1>${esc(c.nome)}</h1>
+  <div class="chips">
+    <span class="chip2">🗓 Onboarding em <b>${fmtCurto(dt(c.assinatura))}</b></span>
+    <span class="chip2" style="color:var(--rosa)">★ Aniversário <b>${c.aniversario? fmtCurto(dt(c.aniversario)):'—'}</b></span>
+    <span class="chip2"><span class="mini">${ini(c.cs)}</span>CS <b>${esc(c.cs)}</b></span>
+    <span class="chip2"><span class="mini" style="background:rgba(88,166,255,.2);color:var(--azul)">${ini(c.gt||'G')}</span>Tráfego <b>${esc(c.gt)||'—'}</b></span>
+    <span class="chip2"><span class="mini" style="background:rgba(63,185,80,.2);color:var(--verde)">${ini(c.dev||'D')}</span>Dev <b>${esc(c.dev)||'—'}</b></span>
+    <span class="chip2"><span class="mini" style="background:rgba(188,140,255,.2);color:var(--roxo)">ED</span>Design <b>Time compartilhado</b></span>
+    <span class="chip2">Kickoff <b>${c.kickoff? fmtCurto(dt(c.kickoff)) : '⚠ sem data'}</b></span>
+  </div>
+  <div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
+    <div class="tile" style="--tc:var(--laranja)"><small>↗ Progresso</small><b style="color:var(--laranja)">${p}%</b><div class="gbar" style="margin-top:4px"><i style="width:${p}%"></i></div></div>
+    <div class="tile" style="--tc:var(--laranja2)"><small>≋ Atividades</small><b>${f}<i>/${its.length}</i></b><span>concluídas</span></div>
+    <div class="tile" style="--tc:var(--vermelho)"><small>⚠ Atraso QW</small><b style="color:${nQW?'var(--vermelho)':'var(--text)'}">${nQW}</b><span>sob nossa responsabilidade</span></div>
+    <div class="tile" style="--tc:var(--amarelo)"><small>◔ Aguardando cliente</small><b style="color:${nCli?'var(--amarelo)':'var(--text)'}">${nCli}</b><span>dependência do cliente</span></div>
+    <div class="tile" style="--tc:var(--azul)"><small>⚡ Antecipadas</small><b style="color:var(--azul)">${antecip}</b><span>entregues antes do prazo</span></div>
+  </div>
+  ${c.obs? `<div class="aviso" style="margin-bottom:4px">〰 ${esc(c.obs)}</div>`:''}
+  <div class="abas">${abas.map(([k,l])=>`<span class="aba ${ABA_CLI===k?'on':''}" onclick="ABA_CLI='${k}';render()">${l}</span>`).join('')}</div>
+  ${corpo}</div>`;
+}
+async function salvaCampo(ev,aba,cel,inputId,campo){
+  const c=D.clientes.find(x=>x.aba===aba);
+  const valor=document.getElementById(inputId).value.trim();
+  if(await gasSave({acao:'cel',aba,cel,valor}, ev.target)){ c[campo]=valor; setTimeout(render,900); }
+}
+async function kbDrop(ev,aba,colDestino){
+  ev.preventDefault();
+  const row=+ev.dataTransfer.getData('text/plain');
+  const c=D.clientes.find(x=>x.aba===aba);
+  const i=todosItens(c).find(x=>x.row===row);
+  if(!i) return;
+  if(colDestino==='feito' && i.cls!=='feito'){
+    if(await gasSave({acao:'set',aba,row,edits:[['F',fmtBRfull(D.hoje)]]})){ i.feito=D.hoje; i.cls='feito'; render(); }
+  } else if(colDestino!=='feito' && i.cls==='feito'){
+    if(await gasSave({acao:'set',aba,row,edits:[['F','']]})){ i.feito=''; i.cls = i.prev&&i.prev<D.hoje ? (i.tipo==='QW'?'atraso_qw':'atrasado') : 'pendente'; render(); }
+  } else if(colDestino==='andamento'){
+    alert('"Em andamento" é automático (igual na Burst) — não precisa arrastar. Pra concluir, arraste pra Concluído.');
+  }
+}
+function pillSt(i){
+  const st=stEfetivo(i);
+  if(st==='feito'){
+    const atrCli = i.motivo.toLowerCase().includes('cliente');
+    return `<span class="pill p-ok">✓ Concluído${atrCli?' <i style="font-style:normal;color:var(--faint)">(atraso cliente)</i>':''}</span>`;
+  }
+  if(i.tipo==='QW'&&i.cls==='feito') return '<span class="pill p-cel">★ Celebrada</span>';
+  if(st==='atraso_qw') return '<span class="pill p-qw">★ Atraso QW</span>';
+  if(st==='atrasado') return '<span class="pill p-atr">● Atrasado</span>';
+  if(st==='cliente') return '<span class="pill p-hoje">◔ Aguardando cliente</span>';
+  if(st==='hoje') return '<span class="pill p-hoje">Vence hoje</span>';
+  if(st==='sem_prazo') return '<span class="pill p-mut">sem prazo</span>';
+  return '<span class="pill p-mut">Pendente</span>';
+}
+function fitem(c,i){
+  const done=i.cls==='feito';
+  return `<div class="fitem ${done?'done':''}" onclick="abreAtv('${esc(c.aba)}',${i.row})">
+    <div class="tit">${i.tipo==='QW'?'★ ':''}${esc(i.ativ)}<small>${esc(i.tempo)}${i.prev?' · '+fmtCurto(dt(i.prev)):''}${done&&i.feito?' · feito '+fmtCurto(dt(i.feito)):''}</small></div>
+    <span class="fx"><span class="resp"><span class="mini">${ini(i.pessoas[0]||'?')}</span>${esc(i.pessoas[0]||'')}</span>${pillSt(i)}</span></div>`;
+}
+
+if(MODO_APP){ iniciarApp(); } else { render(); checaTour(); }
+</script>
+</body>
+</html>
