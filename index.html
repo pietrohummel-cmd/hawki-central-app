@@ -271,11 +271,18 @@ th{color:var(--faint);font-weight:600;font-size:10px;letter-spacing:.08em;text-t
 .tour-balao b{display:block;font-size:14px;margin-bottom:6px}
 .tour-balao p{color:var(--muted);font-size:12.5px;line-height:1.5;margin-bottom:10px}
 .tour-fx{display:flex;align-items:center;font-size:11px;color:var(--faint)}
+/* modo treino (sandbox com dados fictícios) */
+.treino-banner{display:none;position:sticky;top:0;z-index:40;background:var(--amarelo);color:#1a1006;align-items:center;justify-content:center;gap:12px;padding:9px 16px;font-size:12.5px;font-weight:700;text-align:center;border-bottom:2px solid var(--laranja);flex-wrap:wrap}
+.treino-banner button{background:#1a1006;color:var(--amarelo);border:none;border-radius:7px;padding:4px 12px;font-size:11.5px;font-weight:700;cursor:pointer;flex-shrink:0}
+html.modo-treino .treino-banner{display:flex}
+html.modo-treino .side{top:40px}
+html.modo-treino .topbar{top:40px}
 @media(max-width:760px){.side{display:none}.hero-kpis{margin-left:0;text-align:left}.kb{grid-template-columns:repeat(4,230px)}}
 </style>
 </head>
 <body>
 <script>if(localStorage.getItem('hk_side_fechada')==='1')document.documentElement.classList.add('side-fechada');</script>
+<div class="treino-banner" id="treino-banner">🎓 MODO TREINO — dados fictícios, nada aqui é salvo de verdade <button id="treino-sair-btn" type="button">Sair do treino</button></div>
 <div class="app">
   <aside class="side">
     <div class="brand"><div class="logo">H</div><div><b>Central de Projetos</b><span>Hawki</span></div></div>
@@ -295,6 +302,8 @@ th{color:var(--faint);font-weight:600;font-size:10px;letter-spacing:.08em;text-t
     <div class="ngroup"><div class="glbl">Sistema</div>
       <div class="nitem" data-v="config">⚙ Configurações</div>
       <div class="nitem" data-v="usuarios" id="nav-usuarios" style="display:none">👥 Usuários</div>
+      <div class="nitem" data-action="tour">❓ Tour guiado</div>
+      <div class="nitem" data-action="treino" id="nav-modo-treino">🎓 Modo treino</div>
     </div>
   </aside>
   <button class="side-toggle" id="side-toggle" type="button" title="Recolher menu" aria-label="Recolher menu">‹</button>
@@ -358,6 +367,9 @@ th{color:var(--faint);font-weight:600;font-size:10px;letter-spacing:.08em;text-t
 const MODO_APP = true;
 const K_LOCAL = ''; // só tem valor real no build local; vazio no app.html publicado
 let D = null;
+// modo treino (sandbox): D_REAL guarda o dado de verdade enquanto D vira o
+// fictício; nenhuma das duas variáveis é persistida em localStorage.
+let MODO_TREINO = false, D_REAL = null, F_TREINO_BACK = null;
 function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 const HOJE = new Date((D? D.hoje : todayISO())+'T12:00:00');
 function aplicaCabecalho(){
@@ -380,7 +392,7 @@ const linhaCel = (c,row,col) => `${D.url_planilha}/edit#gid=${c.gid}&range=${col
 const F = JSON.parse(localStorage.getItem('central_filtros')||'{}');
 F.cs=F.cs||'all'; F.cliente=F.cliente||'all'; F.periodo=F.periodo||'all'; F.status=F.status||'all';
 F.de=F.de||''; F.ate=F.ate||'';
-function salvaF(){ localStorage.setItem('central_filtros', JSON.stringify(F)); }
+function salvaF(){ if(MODO_TREINO) return; localStorage.setItem('central_filtros', JSON.stringify(F)); }
 
 const ehCliente = i => i.pessoas.some(p=>p==='Cliente'||p==='CRC da clínica');
 function stEfetivo(i){
@@ -496,6 +508,16 @@ const API_DEFAULT = 'https://script.google.com/macros/s/AKfycbzFCsYofsyHM3Bi58v-
 const API = ()=>localStorage.getItem('central_api')||API_DEFAULT;
 const API_TOKEN = 'hc_x9k24qf7';
 async function gasSave(payload, btn){
+  if(MODO_TREINO){
+    // porta única de escrita, em treino: NUNCA chama a API real. Quem
+    // aplica a mudança é o próprio código chamador (já mexe no objeto D
+    // em memória e re-renderiza antes/depois deste retorno) — aqui só
+    // simulamos o "salvou" visual e devolvemos sucesso.
+    const old=btn? btn.textContent:''; if(btn){btn.textContent='Salvando…';btn.disabled=true;}
+    await new Promise(r=>setTimeout(r,350));
+    if(btn){btn.textContent='✓ Salvo (treino)';setTimeout(()=>{btn.textContent=old;btn.disabled=false;},1200);}
+    return true;
+  }
   const url=API();
   if(!url){ alert('Escrita ainda não configurada.\n\nSetup de 2 min (uma vez): abrir Configurações no menu e seguir os 3 passos do web app.'); return false; }
   const old=btn? btn.textContent:''; if(btn){btn.textContent='Salvando…';btn.disabled=true;}
@@ -692,9 +714,9 @@ async function renderUsuarios(v){
       <td>${u.criado_em? new Date(u.criado_em).toLocaleDateString('pt-BR'):'—'}</td>
       <td style="white-space:nowrap">${u.aprovado?`<button class="btn sec us-desativar" data-id="${esc(u.id)}">Desativar</button>`:`<button class="btn us-aprovar" data-id="${esc(u.id)}">Aprovar</button>`}</td>
     </tr>`).join('')}</table>`;
-  tb.querySelectorAll('.us-cargo').forEach(s=>s.onchange=async()=>{ await sb.from('profiles').update({cargo:s.value}).eq('id',s.dataset.id); });
-  tb.querySelectorAll('.us-aprovar').forEach(b=>b.onclick=async()=>{ await sb.from('profiles').update({aprovado:true}).eq('id',b.dataset.id); renderUsuarios(v); });
-  tb.querySelectorAll('.us-desativar').forEach(b=>b.onclick=async()=>{ await sb.from('profiles').update({aprovado:false}).eq('id',b.dataset.id); renderUsuarios(v); });
+  tb.querySelectorAll('.us-cargo').forEach(s=>s.onchange=async()=>{ if(treinoBloqueia('Alterar cargo')){ renderUsuarios(v); return; } await sb.from('profiles').update({cargo:s.value}).eq('id',s.dataset.id); });
+  tb.querySelectorAll('.us-aprovar').forEach(b=>b.onclick=async()=>{ if(treinoBloqueia('Aprovar usuário')) return; await sb.from('profiles').update({aprovado:true}).eq('id',b.dataset.id); renderUsuarios(v); });
+  tb.querySelectorAll('.us-desativar').forEach(b=>b.onclick=async()=>{ if(treinoBloqueia('Desativar usuário')) return; await sb.from('profiles').update({aprovado:false}).eq('id',b.dataset.id); renderUsuarios(v); });
 }
 
 // ---------- Minha agenda Google (shell OAuth por usuário) ----------
@@ -735,6 +757,7 @@ function initGcalBotoes(){
   if(bSync) bSync.onclick=sincronizarAgendaPessoal;
 }
 async function sincronizarAgendaPessoal(){
+  if(treinoBloqueia('Sincronizar agenda Google')) return;
   if(!GCAL_TOKEN||!D) return;
   const st=document.getElementById('gcal-status'); st.textContent='Sincronizando…';
   const hoje=new Date(), fim=new Date(Date.now()+120*86400000);
@@ -759,31 +782,64 @@ async function sincronizarAgendaPessoal(){
   }catch(e){ st.textContent='✕ falhou: '+e.message; }
 }
 
-// ---------- tour caseiro (overlay + spotlight, 10 passos) ----------
+// ---------- tour caseiro (overlay + spotlight) ----------
+// Cada passo diz O QUE FAZER (imperativo), não só o que é. `cargos:['admin']`
+// filtra o passo pra quem tem aquele cargo (sem `cargos` = todo mundo vê;
+// em modo local, sem PERFIL, o tour mostra tudo). `titulo`/`texto` podem ser
+// função (pra personalizar com PERFIL na hora de desenhar o passo).
 const TOUR_STEPS = [
-  {titulo:'Bem-vindo à Central de Projetos', texto:'Aqui você acompanha os clientes que são seus, os prazos e as celebrações. Um tour rápido de 10 passos — pode pular quando quiser.'},
-  {titulo:'Filtros globais', texto:'Filtre por CS, cliente, período e status. Os filtros ficam salvos e valem pra tudo que você vê no painel.', sel:'.filtros', antes:()=>{VIEW='dashboard';CLI=null;render();}},
-  {titulo:'Números de hoje', texto:'Aqui ficam os números que mais importam hoje: demandas do dia, atraso de celebração e o que depende do cliente.', sel:'.hero-kpis', antes:()=>{VIEW='dashboard';CLI=null;render();}},
-  {titulo:'Seus clientes', texto:'Aqui fica o menu com a lista de todos os seus clientes.', sel:'.nitem[data-v="clientes"]', antes:()=>{VIEW='dashboard';CLI=null;render();}},
-  {titulo:'Card do cliente', texto:'Clique num cliente pra abrir a página completa dele: etapas, kanban, calendário, histórico.', sel:'.gcard', antes:()=>{VIEW='clientes';CLI=null;render();}},
-  {titulo:'Data de feito é o coração do sistema', texto:'Toda atividade tem um prazo previsto automático. O que decide se ela está em dia é a Data de feito — preencher essa data é o que faz o painel calcular tudo certo.', sel:'.fasebox', antes:()=>{ if(D&&D.clientes[0]){ vaiCliente(D.clientes[0].aba); ABA_CLI='etapas'; render(); } }},
-  {titulo:'Kanban', texto:'Arraste um card pra Concluído pra marcar feito na hora.', sel:'.kb', antes:()=>{ if(CLI){ ABA_CLI='kanban'; render(); } }},
-  {titulo:'Calendário', texto:'Veja todas as atividades previstas por dia, com cor por responsável.', sel:'.calgrid', antes:()=>{VIEW='calendario';CLI=null;render();}},
-  {titulo:'Celebrações', texto:'As conquistas que provam o funil pro cliente ficam registradas aqui.', sel:'.tiles', antes:()=>{VIEW='celebracoes';CLI=null;render();}},
-  {titulo:'Pronto!', texto:'Isso é o essencial. Pra rever esse tour, vá em Configurações › Rever tour.\n\n[DEFINIR: link vídeo Loom de 3min do Pietro]'}
+  // --- boas-vindas ---
+  {titulo:()=>{ const nome=(MODO_APP&&PERFIL&&(PERFIL.nome||PERFIL.email.split('@')[0]))||'Pietro'; return `Boas-vindas, ${nome}!`; },
+   texto:'Esta é a Central de Projetos da Hawki. Seu trabalho aqui é simples de resumir: manter os clientes andando no prazo. O painel avisa o que está atrasado, o que vence hoje e o que já pode virar celebração — você mantém as datas em dia. Este tour é de ação: em cada passo, faça o que o texto pedir.'},
+  // --- dashboard ---
+  {titulo:'Filtros globais', texto:'Clique num filtro (CS, cliente, período ou status) e veja a lista mudar na hora. Eles ficam salvos e valem em todas as telas do painel.', sel:'.filtros', antes:()=>{VIEW='dashboard';CLI=null;render();}},
+  {titulo:'KPIs de hoje', texto:'Estes três números resumem o seu dia: demandas que vencem hoje, celebrações (QW) atrasadas e o que depende do cliente. Comece o dia olhando aqui.', sel:'.hero-kpis', antes:()=>{VIEW='dashboard';CLI=null;render();}},
+  {titulo:'Atenção imediata — o que fazer', texto:'Toda linha aqui é um atraso sob sua responsabilidade. Clique numa linha pra abrir a atividade: se já foi feito, preencha a Data de feito; se ainda não, registre o Motivo do atraso no campo próprio. Nunca deixe um atraso sem uma dessas duas ações.', sel:'#box-atencao', antes:()=>{VIEW='dashboard';CLI=null;render();}},
+  {titulo:'Próximos vencimentos', texto:'Aqui está o que vence nos próximos 7 dias — sua fila de trabalho da semana. Clique numa linha pra abrir a atividade direto daqui.', sel:'#box-vencimentos', antes:()=>{VIEW='dashboard';CLI=null;render();}},
+  // --- clientes ---
+  {titulo:'Abrir a lista de clientes', texto:'Clique em "▢ Clientes" no menu à esquerda pra ver a galeria com todos os seus clientes. Prefere tabela? Tem um botão "≣ Tabela" no canto.', sel:'.nitem[data-v="clientes"]', antes:()=>{VIEW='clientes';CLI=null;render();}},
+  {titulo:'Abrir a página do cliente', texto:'Clique num card de cliente pra abrir a página completa dele. É lá que você trabalha o dia a dia: etapas, kanban, calendário e histórico.', sel:'.gcard', antes:()=>{VIEW='clientes';CLI=null;render();}},
+  {titulo:'REGRA DE OURO: Data de feito', texto:'Esta é a regra mais importante do sistema: preencher a Data de feito é o que faz TUDO calcular — status, atraso, celebração. Clique numa atividade, abra o popup e, quando concluir de verdade, preencha essa data. Se atrasou, registre o motivo em "Motivo do atraso" — nunca deixe em branco.', sel:'.fasebox', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='etapas'; render(); }},
+  {titulo:'Kanban — arraste pra Concluído', texto:'Prefere arrastar a clicar? Puxe um card até a coluna "Concluído" pra marcar feito na hora (e de volta pra desfazer). É o mesmo efeito de preencher a Data de feito.', sel:'.kb', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='kanban'; render(); }},
+  {titulo:'Lista completa', texto:'Clique na aba "Lista" pra ver todas as atividades do cliente numa tabela só, com prazo, feito e status lado a lado — boa pra revisar tudo de uma vez.', sel:'.abas', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='lista'; render(); }},
+  {titulo:'Informações do cliente', texto:'Escreva o contexto do cliente aqui (histórico, preferências, contatos) e clique em "Salvar informações" — é assim que o time todo fica com o mesmo contexto, sem precisar perguntar de novo.', sel:'#cli-info', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='informacoes'; render(); }},
+  {titulo:'Histórico', texto:'A aba Histórico guarda o rastro do que já foi feito neste cliente. Por ora, o histórico completo mora no versionamento da própria planilha (Arquivo › Histórico de versões).', sel:'#hist-box', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='historico'; render(); }},
+  // --- quick wins / celebrações ---
+  {titulo:'O que é uma Quick Win (QW)', texto:'QW é uma conquista que prova o valor do produto pro cliente — um marco que dá vontade de comemorar junto com ele. Aparecem marcadas com ★ em toda a Central.', sel:'.nitem[data-v="celebracoes"]', antes:()=>{VIEW='celebracoes';CLI=null;render();}},
+  {titulo:'Regra da casa: celebrar é sério', texto:'Celebração é SEMPRE manual e SEMPRE com verificação (print, confirmação do cliente) — nunca automática. Antes de anunciar uma QW pro cliente, confira a verificação registrada na atividade.', sel:'.tiles', antes:()=>{VIEW='celebracoes';CLI=null;render();}},
+  {titulo:'O placar de celebrações', texto:'O número ao lado de "★ Celebrações" no menu (por exemplo 0/28) mostra quantas QWs já foram conquistadas do total do modelo. Fique de olho nele.', sel:'#b-qw', antes:()=>{VIEW='dashboard';CLI=null;render();}},
+  // --- calendário ---
+  {titulo:'Calendário mensal', texto:'Veja todas as atividades previstas do mês, coloridas por responsável. Clique num dia pra ver a lista de atividades daquela data.', sel:'.calgrid', antes:()=>{VIEW='calendario';CLI=null;render();}},
+  {titulo:'Sua agenda Google', texto:'Em Configurações, clique em "Conectar minha agenda" (ou "Reconectar", se já conectou antes) pra trazer suas atividades pro seu Google Calendar pessoal. Você precisa estar na lista de testadores do app pra isso funcionar.', sel:'#gcal-conectar', antes:()=>{VIEW='config';CLI=null;render();}},
+  // --- equipe ---
+  {titulo:'Responsáveis', texto:'Clique em "▣ Responsáveis" pra ver quem cuida de cada cliente, agrupado por cargo, com os contadores de abertas, atrasadas, feitas e antecipadas de cada pessoa.', sel:'.nitem[data-v="responsaveis"]', antes:()=>{VIEW='responsaveis';CLI=null;render();}},
+  {titulo:'Modelo de prazos', texto:'É aqui que os prazos automáticos nascem: o modelo padrão (Sofia ou Tráfego) que todo cliente novo recebe. Pra maioria do time é só leitura — quem edita a base das automações é o admin.', sel:'.nitem[data-v="modelo"]', antes:()=>{VIEW='modelo';CLI=null;render();}},
+  // --- só admin ---
+  {titulo:'Novo cliente (admin)', texto:'Clique em "+ Novo cliente" pra instanciar um cliente novo: o modelo de prazos padrão é aplicado automaticamente a partir da data do kickoff.', sel:'#novo', cargos:['admin'], antes:()=>{VIEW='dashboard';CLI=null;render();}},
+  {titulo:'Aprovar usuários (admin)', texto:'Toda conta nova nasce bloqueada até você aprovar. Clique em "👥 Usuários", confira quem está pendente e clique em "Aprovar" — defina o cargo certo antes de liberar o acesso.', sel:'#nav-usuarios', cargos:['admin'], antes:()=>{VIEW='usuarios';CLI=null;render();}},
+  {titulo:'ClickUp e API (admin)', texto:'Em Configurações você conecta o ClickUp (pra importar clientes novos) e a API de escrita da planilha (Apps Script). Sem essa API configurada, o painel funciona só em modo leitura.', sel:'#box-clickup', cargos:['admin'], antes:()=>{VIEW='config';CLI=null;render();}},
+  // --- final ---
+  {titulo:'Pronto! Agora é praticar', texto:'Isso é o essencial pra trabalhar sozinho na Central. Pra rever este tour: menu › ❓ Tour guiado. Pra testar cada tela sem medo de errar, com dados fictícios que não afetam ninguém: menu › 🎓 Modo treino.\n\n[DEFINIR: link vídeo Loom de 3min do Pietro]'}
 ];
-let TOUR_IX=0;
-function tourIniciar(){ TOUR_IX=0; tourPasso(); }
+let TOUR_IX=0, TOUR_ATIVOS=TOUR_STEPS;
+function tourStepsFiltrados(){
+  if(!MODO_APP || !PERFIL || !PERFIL.cargo) return TOUR_STEPS; // modo local ou sem cargo: mostra tudo
+  return TOUR_STEPS.filter(p=>!p.cargos || p.cargos.includes(PERFIL.cargo));
+}
+function tourIniciar(){ TOUR_ATIVOS=tourStepsFiltrados(); TOUR_IX=0; tourPasso(); }
 function tourPasso(){
-  const passo=TOUR_STEPS[TOUR_IX];
+  const passo=TOUR_ATIVOS[TOUR_IX];
   if(!passo){ tourFim(); return; }
   if(passo.antes){ try{ passo.antes(); }catch(e){} }
   setTimeout(()=>tourDesenha(passo), 60);
 }
 function tourDesenha(passo){
   const spot=document.getElementById('tour-spot'), bal=document.getElementById('tour-balao');
+  const titulo = typeof passo.titulo==='function'? passo.titulo() : passo.titulo;
+  const texto = typeof passo.texto==='function'? passo.texto() : passo.texto;
   const alvo = passo.sel? document.querySelector(passo.sel) : null;
-  if(alvo){
+  const visivel = !!(alvo && alvo.offsetParent!==null); // elemento existe mas escondido (cargo/tela) => cai pro modo centralizado
+  if(visivel){
     const r=alvo.getBoundingClientRect(), pad=8;
     spot.style.top=(r.top-pad)+'px'; spot.style.left=(r.left-pad)+'px';
     spot.style.width=(r.width+pad*2)+'px'; spot.style.height=(r.height+pad*2)+'px';
@@ -791,13 +847,15 @@ function tourDesenha(passo){
     spot.style.top='50%'; spot.style.left='50%'; spot.style.width='0px'; spot.style.height='0px';
   }
   spot.style.display='block';
-  bal.innerHTML=`<b>${esc(passo.titulo)}</b><p>${esc(passo.texto).replace(/\n/g,'<br>')}</p>
-    <div class="tour-fx"><span>${TOUR_IX+1} de ${TOUR_STEPS.length}</span>
-    <div style="margin-left:auto;display:flex;gap:6px">
+  const ultimo = TOUR_IX===TOUR_ATIVOS.length-1;
+  bal.innerHTML=`<b>${esc(titulo)}</b><p>${esc(texto).replace(/\n/g,'<br>')}</p>
+    <div class="tour-fx"><span>${TOUR_IX+1} de ${TOUR_ATIVOS.length}</span>
+    <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
     ${TOUR_IX>0?'<button class="btn sec" id="tour-ant">Anterior</button>':''}
     <button class="btn sec" id="tour-pular">Pular</button>
-    <button class="btn" id="tour-prox">${TOUR_IX===TOUR_STEPS.length-1?'Concluir':'Próximo'}</button></div></div>`;
-  if(alvo){
+    ${ultimo?'<button class="btn sec" id="tour-praticar">🎓 Praticar agora</button>':''}
+    <button class="btn" id="tour-prox">${ultimo?'Concluir':'Próximo'}</button></div></div>`;
+  if(visivel){
     const r=alvo.getBoundingClientRect();
     let top=r.bottom+16, left=Math.min(Math.max(r.left,14), window.innerWidth-314);
     if(top+190>window.innerHeight) top=Math.max(14,r.top-190);
@@ -809,6 +867,7 @@ function tourDesenha(passo){
   document.getElementById('tour-prox').onclick=()=>{TOUR_IX++;tourPasso();};
   document.getElementById('tour-pular').onclick=tourFim;
   const ant=document.getElementById('tour-ant'); if(ant) ant.onclick=()=>{TOUR_IX--;tourPasso();};
+  const prat=document.getElementById('tour-praticar'); if(prat) prat.onclick=()=>{ tourFim(); treinoEntrar(); };
 }
 async function tourFim(){
   document.getElementById('tour-spot').style.display='none';
@@ -821,11 +880,115 @@ async function checaTour(){
   else if(!localStorage.getItem('central_tour_visto')) tourIniciar();
 }
 
+// ---------- 🎓 MODO TREINO (sandbox com dados fictícios) ----------
+// Ambiente pra qualquer pessoa testar cada tela do jeito que vai usar de
+// verdade, sem risco: D vira um dataset fictício completo (2 clientes de
+// exemplo) e toda escrita passa a ser simulada só em memória — nada é
+// persistido (nem em localStorage) e nenhuma API real é chamada.
+function treinoBloqueia(nomeAcao){
+  if(!MODO_TREINO) return false;
+  alert('🎓 Modo treino: "'+nomeAcao+'" é uma ação real de admin e não roda aqui — os dados são fictícios. Saia do treino (botão no banner amarelo) pra usar de verdade.');
+  return true;
+}
+function dadosTreino(){
+  const off = n => { const d=new Date(HOJE); d.setDate(d.getDate()+n); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+  const it = (row,tempo,tipo,papel,pessoas,ativ,prevN,feitoN,cls,motivo) => ({
+    row, tempo, tipo, papel, pessoas, ativ,
+    prev: prevN==null? '' : off(prevN),
+    feito: feitoN==null? '' : off(feitoN),
+    cls, motivo: motivo||'', verif:''
+  });
+  const sofia = {
+    aba:'treino-sofia', gid:0, nome:'Clínica Exemplo — Sofia', servico:'Sofia (IA only)',
+    assinatura:off(-32), kickoff:off(-14), aniversario:off(18), gt:'', dev:'Automação', cs:'Adão',
+    info:'Cliente fictício do modo treino — uma clínica de exemplo pra você testar cada tela sem medo de errar.',
+    obs:'🎓 Cliente de treino. Nada aqui é salvo de verdade.',
+    fases:[
+      {titulo:'FASE 00', desc:'Pré-kickoff — boas-vindas, kit de pré-requisitos, provas e agendamento do kickoff.', itens:[
+        it(101,'A+1','PP','SÓC',['Adão'],'Boas-vindas e kit de pré-requisitos enviado',-30,-29,'feito'),
+        it(102,'A+3','PP','SÓC',['Adão'],'Provas e cases enviados',-27,-27,'feito'),
+        it(103,'A+5','PP','CLI',['Cliente'],'Agendamento do kickoff confirmado',-20,-20,'feito'),
+      ]},
+      {titulo:'FASE 01', desc:'Kickoff e montagem — one-pager, conexão, máquina montada e SMOKE.', itens:[
+        it(104,'D+0','PP','SÓC+GT',['Adão','Gestora'],'Kickoff realizado',-14,-14,'feito'),
+        it(105,'D+2','QW','SÓC',['Adão'],'Sofia respondeu o primeiro paciente de teste',-12,-13,'feito'),
+        it(106,'D+3','PP','CLI',['Cliente'],'One-pager aprovado pelo cliente',-7,null,'atrasado','Atraso do cliente'),
+        it(107,'D+5','PP','IA',['Automação'],'Conexão da Sofia com o WhatsApp da clínica',-4,null,'atrasado','Atraso nosso'),
+        it(108,'D+7','QW','SÓC',['Adão'],'Máquina montada — primeira demo pro cliente',-3,null,'atraso_qw'),
+        it(109,'D+8','PP','IA',['Automação'],'SMOKE test verde',2,null,'pendente'),
+      ]},
+      {titulo:'FASE 02', desc:'Go-live e ativação — monitoria e o primeiro agendamento de verdade no PMS.', itens:[
+        it(110,'D+10','PP','SÓC',['Adão'],'Follow-up de vencimento',0,null,'hoje'),
+        it(111,'D+15','QW','SÓC',['Adão'],'Primeiro agendamento real gerado pela Sofia no PMS',10,null,'pendente'),
+        it(112,'D+20','PP','IA',['Automação'],'Monitoria ativa de 7 dias concluída',20,null,'pendente'),
+      ]},
+      {titulo:'FASE 03', desc:'Prova e renovação — NPS, relatório D30 e call de renovação.', itens:[
+        it(113,'D+30','PP','CLI',['Cliente'],'NPS respondido pelo cliente',28,null,'pendente'),
+      ]},
+    ]
+  };
+  const combo = {
+    aba:'treino-combo', gid:0, nome:'Clínica Exemplo — Combo', servico:'COMBO (Tráfego + Sofia)',
+    assinatura:off(-40), kickoff:off(-18), aniversario:off(9), gt:'Gestora', dev:'Automação', cs:'Adão',
+    info:'Cliente fictício do modo treino (combo tráfego + Sofia) — pra ver como fica um cliente com o módulo de tráfego.',
+    obs:'🎓 Cliente de treino. Nada aqui é salvo de verdade.',
+    fases:[
+      {titulo:'FASE 00', desc:'Pré-kickoff — boas-vindas, kit de pré-requisitos, provas e agendamento do kickoff.', itens:[
+        it(201,'A+1','PP','SÓC',['Adão'],'Boas-vindas e kit de pré-requisitos enviado',-38,-37,'feito'),
+        it(202,'A+5','PP','CLI',['Cliente'],'Agendamento do kickoff confirmado',-25,-25,'feito'),
+      ]},
+      {titulo:'FASE 01', desc:'Kickoff e montagem — one-pager, conexão, máquina montada e SMOKE.', itens:[
+        it(203,'D+0','PP','SÓC+GT',['Adão','Gestora'],'Kickoff realizado',-18,-18,'feito'),
+        it(204,'D+3','PP','CRC',['CRC da clínica'],'Cadastro do CRC no sistema da clínica',-3,null,'atrasado','Atraso do cliente'),
+      ]},
+      {titulo:'MÓDULO', desc:'Trilho de tráfego do combo — o relógio da Sofia manda; Gate 2 governa.', itens:[
+        it(205,'M+1','PP','GT',['Gestora'],'Estrutura de campanhas montada',-4,null,'atrasado','Atraso nosso'),
+        it(206,'M+2','PP','CLI',['Cliente'],'Criativos aprovados pelo cliente',-2,null,'atrasado','Atraso do cliente'),
+        it(207,'M+3','PP','GT',['Gestora'],'Primeira veiculação no ar',5,null,'pendente'),
+      ]},
+      {titulo:'QWS', desc:'Celebrações exclusivas do combo — provam o funil inteiro.', itens:[
+        it(208,'QWS+1','QW','SÓC+GT',['Adão','Gestora'],'Marco: 10 agendamentos vindos do tráfego',-6,null,'atraso_qw'),
+        it(209,'QWS+2','QW','SÓC+GT',['Adão','Gestora'],'Funil completo provado (tráfego → Sofia → agendamento)',15,null,'pendente'),
+      ]},
+    ]
+  };
+  return {
+    gerado:new Date().toLocaleString('pt-BR'), hoje:(D_REAL?D_REAL.hoje:todayISO()), sid:'', url_planilha:'#',
+    cs_lista:['Adão'], clientes:[sofia,combo],
+    modelos:(D_REAL&&D_REAL.modelos)? D_REAL.modelos : {sofia:{aba:'Modelo Sofia',gid:0,fases:[]}, trafego:{aba:'Modelo Tráfego',gid:0,fases:[]}}
+  };
+}
+function treinoEntrar(){
+  if(MODO_TREINO) return;
+  fecha('ov-novo'); fecha('ov-atv');
+  D_REAL=D; F_TREINO_BACK={...F};
+  D=dadosTreino();
+  F.cs='all'; F.cliente='all'; F.periodo='all'; F.status='all'; F.de=''; F.ate='';
+  MODO_TREINO=true;
+  document.documentElement.classList.add('modo-treino');
+  aplicaCabecalho(); montaFiltros();
+  VIEW='dashboard'; CLI=null; render();
+}
+function treinoSair(){
+  if(!MODO_TREINO) return;
+  fecha('ov-novo'); fecha('ov-atv');
+  D=D_REAL; D_REAL=null;
+  if(F_TREINO_BACK) Object.assign(F,F_TREINO_BACK);
+  F_TREINO_BACK=null;
+  MODO_TREINO=false;
+  document.documentElement.classList.remove('modo-treino');
+  aplicaCabecalho(); montaFiltros();
+  VIEW='dashboard'; CLI=null; render();
+}
+const treinoSairBtn = document.getElementById('treino-sair-btn');
+if(treinoSairBtn) treinoSairBtn.onclick = treinoSair;
+
 // ---- modais ----
 function abre(id){document.getElementById(id).classList.add('on');}
 function fecha(id){document.getElementById(id).classList.remove('on');}
 document.getElementById('novo').onclick=()=>abre('ov-novo');
 function criarCliente(){
+  if(treinoBloqueia('Criar cliente')) return;
   const v=id=>document.getElementById(id).value.trim();
   const txt=`NOVO CLIENTE (Central)\nNome: ${v('nc-nome')}\nTipo: ${v('nc-tipo')}\nCS: ${v('nc-cs')}\nGT: ${v('nc-gt')}\nAssinatura: ${v('nc-ass')}\nKickoff/onboarding: ${v('nc-onb')}\nAniversário Dr: ${v('nc-ani')}\nObs: ${v('nc-obs')}`;
   navigator.clipboard && navigator.clipboard.writeText(txt);
@@ -903,7 +1066,11 @@ const fmtBRfull = iso=>iso.split('-').reverse().join('/');
 // ---- navegação ----
 let VIEW='dashboard', CLI=null, ABA_CLI='etapas';
 const TITULOS={dashboard:['Visão geral','Dashboard'],clientes:['Clientes','Lista de Projetos'],cs:['Visão geral','Por Sucesso do Cliente'],calendario:['Planejamento','Calendário'],celebracoes:['Planejamento','Celebrações'],responsaveis:['Equipe','Responsáveis'],modelo:['Equipe','Modelo de Prazos'],config:['Sistema','Configurações'],usuarios:['Sistema','Usuários']};
-document.querySelectorAll('.nitem').forEach(n=>n.onclick=()=>{VIEW=n.dataset.v;CLI=null;render();});
+document.querySelectorAll('.nitem').forEach(n=>{
+  if(n.dataset.action==='tour'){ n.onclick=()=>tourIniciar(); return; }
+  if(n.dataset.action==='treino'){ n.onclick=()=>{ MODO_TREINO? treinoSair() : treinoEntrar(); }; return; }
+  n.onclick=()=>{VIEW=n.dataset.v;CLI=null;render();};
+});
 function vaiCliente(aba){ VIEW='clientes'; CLI=aba; ABA_CLI='etapas'; render(); window.scrollTo(0,0); }
 
 // ---- sidebar recolhível (desktop) ----
@@ -1150,7 +1317,7 @@ function renderConfig(v){
   }
   v.innerHTML=identBox+`
 
-  <div class="box" style="max-width:680px;margin-top:14px"><h2>⟳ Sincronização ClickUp <span class="bdg">conta Hawki dedicada</span></h2>
+  <div class="box" id="box-clickup" style="max-width:680px;margin-top:14px"><h2>⟳ Sincronização ClickUp <span class="bdg">conta Hawki dedicada</span></h2>
     <div class="mnote" style="margin-bottom:8px">Importa os onboardings reais da lista do ClickUp (conta específica da Hawki, token próprio — NÃO a conta antiga). Campos lidos por nome: <b>Data de início</b> (vira âncora A) e <b>Tipo de serviço</b> (decide Sofia/Tráfego/Combo). O ClickUp é só LEITURA — o sync escreve na planilha, nunca lá.</div>
     <div class="mgrid" style="margin-bottom:10px">
       <div><label>Token pessoal (pk_...)</label><input id="cu-token" type="password" placeholder="pk_..."></div>
@@ -1196,12 +1363,14 @@ function renderConfig(v){
     <div><b style="font-size:13px">Regras de time</b>
     <div class="mnote" style="margin-top:4px">• 1 CS · 1 Gestor de tráfego por cliente · Automação cobre o dev · design = GT + IA de imagem (compartilhado) · Admin vê tudo</div></div></div>`;
   document.getElementById('cu-salvar').onclick=async ev=>{
+    if(treinoBloqueia('Salvar conexão ClickUp')) return;
     const token=document.getElementById('cu-token').value.trim(), list=document.getElementById('cu-list').value.trim();
     if(!token&&!list) return alert('Preencha token e/ou list ID.');
     const okk=await gasSave({acao:'cfg_clickup',token,list}, ev.target);
     if(okk){ document.getElementById('cu-token').value=''; }
   };
   document.getElementById('cu-buscar').onclick=async ev=>{
+    if(treinoBloqueia('Buscar novos clientes do ClickUp')) return;
     const out=document.getElementById('cu-out'); out.innerHTML='<span class="mnote">… consultando ClickUp via Apps Script</span>';
     const url=API(); if(!url){ out.innerHTML=''; return alert('Configure primeiro a API do painel (seção Escrita na planilha).'); }
     try{
@@ -1226,9 +1395,11 @@ function renderConfig(v){
     }catch(e){ out.innerHTML='<span class="mnote" style="color:var(--vermelho)">✕ '+esc(e.message)+'</span>'; }
   };
   document.getElementById('cu-equipe').onclick=async ev=>{
+    if(treinoBloqueia('Atualizar dados do ClickUp')) return;
     if(await gasSave({acao:'clickup_equipe'}, ev.target)) alert('Metadados atualizados a partir do ClickUp (sem tocar em atividades).');
   };
   document.getElementById('cfg-salvar').onclick=async ev=>{
+    if(treinoBloqueia('Salvar configuração da API')) return;
     const url=document.getElementById('cfg-api').value.trim();
     if(!url){ localStorage.removeItem('central_api'); document.getElementById('cfg-st').textContent='○ removida — modo leitura'; return; }
     localStorage.setItem('central_api',url);
@@ -1312,8 +1483,8 @@ function renderHome(v){
     <div class="tile" style="--tc:var(--azul)"><small>⚡ Antecipadas</small><b>${antecip.length}</b><span>entregues antes do prazo</span></div>
   </div>
   <div class="cols"><div>
-      <div class="box"><h2>⚠️ Atenção imediata <span class="bdg">${atrasoQW.length} QW · ${aguardCli.length} cliente</span></h2>${atTable}</div>
-      <div class="box" style="margin-top:14px"><h2>🕐 Próximos vencimentos <span class="bdg">próximos 7 dias</span></h2>${pvTable}</div>
+      <div class="box" id="box-atencao"><h2>⚠️ Atenção imediata <span class="bdg">${atrasoQW.length} QW · ${aguardCli.length} cliente</span></h2>${atTable}</div>
+      <div class="box" id="box-vencimentos" style="margin-top:14px"><h2>🕐 Próximos vencimentos <span class="bdg">próximos 7 dias</span></h2>${pvTable}</div>
     </div><div>
       <div class="box"><h2>★ Celebrações recentes <span class="bdg">${qwFeitas.length}</span></h2>${celHtml}</div>
       <div class="box" style="margin-top:14px"><h2>✦ Agenda da semana <span class="bdg">hoje · ${DIAS[HOJE.getDay()].toLowerCase()}, ${HOJE.getDate()} de ${MES[HOJE.getMonth()]}</span></h2>
@@ -1418,7 +1589,7 @@ function renderCliente(v){
       <div style="display:flex;align-items:center;margin-top:8px"><span class="mnote">Aparece como destaque acima das abas.</span>
       <button class="btn" style="margin-left:auto" onclick="salvaCampo(event,'${esc(c.aba)}','K2','cli-obs','obs')">Salvar observações</button></div></div>`;
   if(ABA_CLI==='metas') corpo=`<div class="box"><h2>◎ Metas extras do cliente</h2><div class="mnote">Metas específicas deste cliente além do modelo padrão. Ex: "Atingir 100 leads em 30 dias", "Gravar 5 vídeos em abril".</div><div class="vazio" style="text-align:center;padding:26px">◎<br>Nenhuma meta extra cadastrada<br><span style="font-size:11px">na v1, meta extra entra como linha nova no fim da aba do cliente na planilha (tempo "sem prazo"); o painel lê e mostra junto das atividades</span></div></div>`;
-  if(ABA_CLI==='historico') corpo=`<div class="box"><div class="aviso">O histórico completo (log de alterações) entra na Fase 5, quando o dado sair da planilha pro banco. Por ora o histórico é o próprio versionamento do Google Sheets (Arquivo &gt; Histórico de versões).</div></div>`;
+  if(ABA_CLI==='historico') corpo=`<div class="box" id="hist-box"><div class="aviso">O histórico completo (log de alterações) entra na Fase 5, quando o dado sair da planilha pro banco. Por ora o histórico é o próprio versionamento do Google Sheets (Arquivo &gt; Histórico de versões).</div></div>`;
 
   v.innerHTML=`<span class="cli-volta" onclick="CLI=null;render()">← Voltar para clientes</span>
   <div class="cli-capa"></div><div class="cli-head"><div class="cli-ava">${ini(c.nome)}</div><h1>${esc(c.nome)}</h1>
