@@ -819,7 +819,7 @@ const TOUR_STEPS = [
   {titulo:'Aprovar usuários (admin)', texto:'Toda conta nova nasce bloqueada até você aprovar. Clique em "👥 Usuários", confira quem está pendente e clique em "Aprovar" — defina o cargo certo antes de liberar o acesso.', sel:'#nav-usuarios', cargos:['admin'], antes:()=>{VIEW='usuarios';CLI=null;render();}},
   {titulo:'ClickUp e API (admin)', texto:'Em Configurações você conecta o ClickUp (pra importar clientes novos) e a API de escrita da planilha (Apps Script). Sem essa API configurada, o painel funciona só em modo leitura.', sel:'#box-clickup', cargos:['admin'], antes:()=>{VIEW='config';CLI=null;render();}},
   // --- final ---
-  {titulo:'Pronto! Agora é praticar', texto:'Isso é o essencial pra trabalhar sozinho na Central. Pra rever este tour: menu › ❓ Tour guiado. Pra testar cada tela sem medo de errar, com dados fictícios que não afetam ninguém: menu › 🎓 Modo treino.\n\n[DEFINIR: link vídeo Loom de 3min do Pietro]'}
+  {titulo:'Pronto! Agora é praticar', texto:'Isso é o essencial pra trabalhar sozinho na Central. Pra rever este tour: menu › ❓ Tour guiado. Pra testar cada tela sem medo de errar, com dados fictícios que não afetam ninguém: menu › 🎓 Modo treino.\n\nQuer ver o fluxo completo do dia em 2 minutos? Assista o vídeo:', video:'https://central.hawki.com.br/central-tour.mp4'}
 ];
 let TOUR_IX=0, TOUR_ATIVOS=TOUR_STEPS;
 function tourStepsFiltrados(){
@@ -849,6 +849,7 @@ function tourDesenha(passo){
   spot.style.display='block';
   const ultimo = TOUR_IX===TOUR_ATIVOS.length-1;
   bal.innerHTML=`<b>${esc(titulo)}</b><p>${esc(texto).replace(/\n/g,'<br>')}</p>
+    ${passo.video?`<a class="btn" href="${passo.video}" target="_blank" style="text-decoration:none;display:inline-block;margin-bottom:10px">▶ Assistir o vídeo (2min)</a>`:''}
     <div class="tour-fx"><span>${TOUR_IX+1} de ${TOUR_ATIVOS.length}</span>
     <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
     ${TOUR_IX>0?'<button class="btn sec" id="tour-ant">Anterior</button>':''}
