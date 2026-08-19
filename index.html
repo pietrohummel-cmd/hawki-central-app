@@ -52,6 +52,8 @@ a{color:inherit;text-decoration:none}
 .perfil{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--border);border-radius:999px;padding:4px 12px 4px 4px;font-size:12px;color:var(--muted)}
 .avatar{width:24px;height:24px;border-radius:50%;background:var(--laranja);color:#000;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
 .filtros{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.f-pill{background:transparent;border:1px solid var(--laranja);color:var(--laranja);border-radius:999px;font-size:11px;padding:3px 10px;cursor:pointer;display:none;align-items:center;white-space:nowrap}
+.f-pill:hover{background:rgba(255,140,66,.12)}
 select,input,textarea{background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 10px;font-size:13px;font-family:inherit}
 select:focus,input:focus,textarea:focus{outline:1px solid var(--laranja)}
 .btn{background:var(--laranja);color:#1a1006;font-weight:600;border:none;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer}
@@ -313,6 +315,7 @@ html.modo-treino .topbar{top:40px}
       <div class="crumb"><small id="crumb-top">Visão geral</small><b id="crumb">Dashboard</b></div>
       <div class="perfil" id="perfil-box"><span class="avatar">PH</span> Pietro · Admin · acesso total</div>
       <div class="filtros">
+        <span id="f-pill" class="f-pill" title="Clique para limpar os filtros"></span>
         <select id="f-cs"></select>
         <select id="f-cliente"></select>
         <div class="fper">
@@ -342,7 +345,7 @@ html.modo-treino .topbar{top:40px}
   <h2>Novo cliente</h2><div class="sub">Informações principais do projeto</div>
   <div class="mgrid">
     <div class="mfull"><label>Nome do cliente</label><input id="nc-nome" placeholder="Ex: Clínica Odonto Smile"></div>
-    <div><label>Sucesso do Cliente (CS)</label><select id="nc-cs"><option>Adão</option><option>Pietro</option></select></div>
+    <div><label>Sucesso do Cliente (CS)</label><select id="nc-cs"><option>Adão</option><option>William</option><option>Pietro</option></select></div>
     <div><label>Data da reunião de onboarding</label><input id="nc-onb" type="date"></div>
     <div><label>Gestor de tráfego</label><select id="nc-gt"><option>Gestora</option><option>—</option></select></div>
     <div><label>Tipo de serviço</label><select id="nc-tipo"><option>Sofia (IA only)</option><option>Tráfego</option><option>COMBO (Tráfego + Sofia)</option></select></div>
@@ -456,6 +459,33 @@ function labelPer(){
   return (PERIODOS.find(p=>p[0]===F.periodo)||PERIODOS[0])[1]+' ▾';
 }
 function atualizaPerBtn(){ perBtn.textContent=labelPer(); perBtn.style.color = F.periodo!=='all'? 'var(--laranja)':''; }
+
+// ---- pill de filtros ativos (topbar): resume o que está filtrando e limpa tudo no clique ----
+const STATUS_PILL_LBL = {atrasado:'atrasadas', hoje:'vence hoje', pendente:'pendentes', feito:'feitas', cliente:'aguardando cliente'};
+const PERIODO_PILL_LBL = {hoje:'hoje', semana:'esta semana', '7d':'próx. 7 dias', mes:'este mês', ultmes:'mês passado'};
+function atualizaPill(){
+  const pill = document.getElementById('f-pill');
+  if(!pill) return;
+  const partes = [];
+  if(F.cs && F.cs!=='all') partes.push(F.cs);
+  if(F.cliente && F.cliente!=='all') partes.push(F.cliente);
+  if(F.periodo && F.periodo!=='all'){
+    if(F.periodo==='custom' && F.de && F.ate) partes.push(`${fmtBR(F.de)} → ${fmtBR(F.ate)}`);
+    else if(PERIODO_PILL_LBL[F.periodo]) partes.push(PERIODO_PILL_LBL[F.periodo]);
+  }
+  if(F.status && F.status!=='all' && STATUS_PILL_LBL[F.status]) partes.push(STATUS_PILL_LBL[F.status]);
+  if(partes.length){
+    pill.textContent = '⚡ filtrando: '+partes.join(' · ');
+    pill.style.display = 'inline-flex';
+  } else {
+    pill.style.display = 'none';
+  }
+}
+document.getElementById('f-pill').onclick = ()=>{
+  F.cs='all'; F.cliente='all'; F.periodo='all'; F.status='all'; F.de=''; F.ate='';
+  salvaF(); montaFiltros(); atualizaPerBtn(); render();
+};
+
 let calMes = new Date(HOJE.getFullYear(), HOJE.getMonth(), 1), calIni = null;
 perBtn.onclick = e=>{
   e.stopPropagation(); fechaCal();
@@ -1105,6 +1135,7 @@ function render(){
   const [ct,cb] = CLI? ['Clientes', D.clientes.find(c=>c.aba===CLI).nome] : TITULOS[VIEW];
   document.getElementById('crumb-top').textContent=ct;
   document.getElementById('crumb').textContent=cb;
+  atualizaPill();
   const v=document.getElementById('view');
   if(VIEW==='dashboard') return renderHome(v);
   if(VIEW==='clientes') return CLI? renderCliente(v) : renderGaleria(v);
