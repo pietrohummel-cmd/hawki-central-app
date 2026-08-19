@@ -840,6 +840,7 @@ function tourDesenha(passo){
   const alvo = passo.sel? document.querySelector(passo.sel) : null;
   const visivel = !!(alvo && alvo.offsetParent!==null); // elemento existe mas escondido (cargo/tela) => cai pro modo centralizado
   if(visivel){
+    alvo.scrollIntoView({block:'center'}); // alvo abaixo da dobra sumia com o balão (bug passo 5)
     const r=alvo.getBoundingClientRect(), pad=8;
     spot.style.top=(r.top-pad)+'px'; spot.style.left=(r.left-pad)+'px';
     spot.style.width=(r.width+pad*2)+'px'; spot.style.height=(r.height+pad*2)+'px';
@@ -860,6 +861,7 @@ function tourDesenha(passo){
     const r=alvo.getBoundingClientRect();
     let top=r.bottom+16, left=Math.min(Math.max(r.left,14), window.innerWidth-314);
     if(top+190>window.innerHeight) top=Math.max(14,r.top-190);
+    top=Math.min(Math.max(14,top), Math.max(14,window.innerHeight-240)); // nunca fora do viewport
     bal.style.top=top+'px'; bal.style.left=left+'px'; bal.style.transform='';
   } else {
     bal.style.top='50%'; bal.style.left='50%'; bal.style.transform='translate(-50%,-50%)';
