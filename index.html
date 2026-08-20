@@ -14,6 +14,9 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#0b0e14; --panel:#12161f; --panel2:#171c27; --card:#161b26; --border:#242b38;
@@ -23,7 +26,7 @@
   --wil:#ec4899; /* William (CS) — antes era var(--laranja2), quase idêntico a SÓC/Adão (achado leve 20/08) */
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,'Segoe UI',Roboto,sans-serif}
+body{background:var(--bg);color:var(--text);font:14px/1.45 'Inter',-apple-system,'Segoe UI',Roboto,sans-serif;font-variant-numeric:tabular-nums}
 a{color:inherit;text-decoration:none}
 .app{display:flex;min-height:100vh}
 /* sidebar */
@@ -282,6 +285,34 @@ th{color:var(--faint);font-weight:600;font-size:10px;letter-spacing:.08em;text-t
 html.modo-treino .treino-banner{display:flex}
 html.modo-treino .side{top:40px}
 html.modo-treino .topbar{top:40px}
+/* toast global (confirmação de gasSave) */
+.toast-wrap{position:fixed;right:18px;bottom:18px;z-index:300;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{pointer-events:auto;display:flex;align-items:flex-start;gap:8px;background:#101420;border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:12.5px;line-height:1.4;box-shadow:0 10px 30px rgba(0,0,0,.45);max-width:340px}
+.toast .ic{flex-shrink:0;font-weight:700}
+.toast .msg{flex:1;color:var(--text)}
+.toast.ok{border-left:3px solid var(--verde)}.toast.ok .ic{color:var(--verde)}
+.toast.err{border-left:3px solid var(--vermelho)}.toast.err .ic{color:var(--vermelho)}
+.toast.info{border-left:3px solid var(--muted)}.toast.info .ic{color:var(--muted)}
+@media(min-width:761px){.toast-wrap{align-items:flex-end}}
+@media(max-width:760px){.toast-wrap{left:12px;right:12px;bottom:12px;top:auto;align-items:stretch}.toast{max-width:none}}
+/* transições curtas de acabamento — só quando o usuário não pediu menos movimento */
+@media(prefers-reduced-motion:no-preference){
+  .toast{animation:toastIn .2s ease}
+  .toast.saindo{animation:toastOut .18s ease forwards}
+  .btn,.btn.sec,.btn.danger{transition:filter .15s ease,transform .15s ease}
+  .btn:hover,.btn.sec:hover,.btn.danger:hover{filter:brightness(1.08)}
+  .btn:active,.btn.sec:active,.btn.danger:active{transform:translateY(1px)}
+  .kbcard{transition:border-color .15s ease,transform .15s ease}
+  .kbcard:hover{transform:translateY(-2px);border-color:var(--laranja)}
+  .nitem{transition:background-color .15s ease,color .15s ease}
+  .aba{transition:background-color .15s ease,color .15s ease}
+  .overlay.on{animation:overlayIn .18s ease}
+  .overlay.on .modal{animation:modalIn .2s ease}
+}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toastOut{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(8px)}}
+@keyframes overlayIn{from{opacity:0}to{opacity:1}}
+@keyframes modalIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:760px){.side{display:none}.hero-kpis{margin-left:0;text-align:left}.kb{grid-template-columns:repeat(4,230px)}}
 </style>
 </head>
@@ -385,6 +416,8 @@ html.modo-treino .topbar{top:40px}
 <!-- tour caseiro -->
 <div class="tour-spot" id="tour-spot" style="display:none"></div>
 <div class="tour-balao" id="tour-balao" style="display:none"></div>
+<!-- toast global de confirmação (gasSave) -->
+<div class="toast-wrap" id="toast-wrap" role="status" aria-live="polite"></div>
 
 <script>
 const MODO_APP = true;
@@ -576,6 +609,27 @@ function desenhaCal(){
 document.addEventListener('click', e=>{ if(!e.target.closest('.fper')){ fechaCal(); const m=document.getElementById('permenu'); if(m) m.style.display='none'; } });
 atualizaPerBtn();
 
+// ---- toast global (achado 20/08: gasSave só dá feedback quando recebe um
+// botão — quem arrasta no kanban ou edita sem botão visível não sabia se
+// gravou). tipo: 'sucesso' | 'erro' | 'info'. Empilha, some sozinho, respeita
+// prefers-reduced-motion (a animação é só CSS; sem CSS ela simplesmente não
+// anima, mas aparece/some igual).
+function toast(msg, tipo){
+  tipo = tipo==='erro' ? 'erro' : tipo==='sucesso' ? 'sucesso' : 'info';
+  const wrap = document.getElementById('toast-wrap');
+  if(!wrap) return; // defensivo — nunca deve faltar, o template sempre inclui o container
+  const el = document.createElement('div');
+  el.className = 'toast ' + (tipo==='erro'?'err':tipo==='sucesso'?'ok':'info');
+  const ic = tipo==='erro' ? '✕' : tipo==='sucesso' ? '✓' : 'ℹ';
+  el.innerHTML = `<span class="ic">${ic}</span><span class="msg">${esc(msg)}</span>`;
+  wrap.appendChild(el);
+  const dur = tipo==='erro' ? 6000 : 3000;
+  setTimeout(()=>{
+    el.classList.add('saindo');
+    setTimeout(()=>el.remove(), 200);
+  }, dur);
+}
+
 // ---- API de escrita (Apps Script Web App; deploy de 10/08 já embutido como padrão) ----
 const API_DEFAULT = 'https://script.google.com/macros/s/AKfycbzFCsYofsyHM3Bi58v-HIpl8ki47iAUtxfLLxB6NrNecwCgt2Z7VnJ3_Ixicx6_4dwN6Q/exec';
 const API = ()=>localStorage.getItem('central_api')||API_DEFAULT;
@@ -591,10 +645,11 @@ async function gasSave(payload, btn){
     const old=btn? btn.textContent:''; if(btn){btn.textContent='Salvando…';btn.disabled=true;}
     await new Promise(r=>setTimeout(r,350));
     if(btn){btn.textContent='✓ Salvo (treino)';setTimeout(()=>{btn.textContent=old;btn.disabled=false;},1200);}
+    toast('Modo treino — nada foi salvo', 'info');
     return {ok:true, row:TREINO_ROW_SEQ--, aba:payload.aba};
   }
   const url=API();
-  if(!url){ alert('Escrita ainda não configurada.\n\nSetup de 2 min (uma vez): abrir Configurações no menu e seguir os 3 passos do web app.'); return false; }
+  if(!url){ toast('Escrita não configurada — abra Configurações e siga os 3 passos do web app.', 'erro'); alert('Escrita ainda não configurada.\n\nSetup de 2 min (uma vez): abrir Configurações no menu e seguir os 3 passos do web app.'); return false; }
   const old=btn? btn.textContent:''; if(btn){btn.textContent='Salvando…';btn.disabled=true;}
   try{
     const corpo={k:API_TOKEN,...payload};
@@ -604,9 +659,11 @@ async function gasSave(payload, btn){
     const j=await r.json();
     if(!j.ok) throw new Error(j.erro||'falha');
     if(btn){btn.textContent='✓ Salvo';setTimeout(()=>{btn.textContent=old;btn.disabled=false;},1200);}
+    toast('Gravado na planilha', 'sucesso');
     return j; // {ok:true, ...} — chamadores que só precisam de sucesso continuam usando isto como truthy
   }catch(e){
     if(btn){btn.textContent=old;btn.disabled=false;}
+    toast('Não gravou — tente de novo ('+e.message+')', 'erro');
     alert('Não salvou: '+e.message+'\nConfira a URL da API em Configurações.');
     return false;
   }
@@ -882,7 +939,7 @@ const TOUR_STEPS = [
   {titulo:'Lista completa', texto:'Clique na aba "Lista" pra ver todas as atividades do cliente numa tabela só, com prazo, feito e status lado a lado — boa pra revisar tudo de uma vez.', sel:'.abas', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='lista'; render(); }},
   {titulo:'+ Nova tarefa', texto:'Precisa lançar algo que não estava no modelo — um pedido pontual, um lembrete pro time? Clique em "+ Nova tarefa" aqui dentro do cliente: escreva o que fazer, escolha quem faz e (se tiver) o prazo. Ela entra no bloco "MÓDULO EXTRA", no fim das etapas.', sel:'.cli-nova-tarefa', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='etapas'; render(); }},
   {titulo:'Informações do cliente', texto:'Escreva o contexto do cliente aqui (histórico, preferências, contatos) e clique em "Salvar informações" — é assim que o time todo fica com o mesmo contexto, sem precisar perguntar de novo.', sel:'#cli-info', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='informacoes'; render(); }},
-  {titulo:'Histórico', texto:'A aba Histórico guarda o rastro do que já foi feito neste cliente. Por ora, o histórico completo mora no versionamento da própria planilha (Arquivo › Histórico de versões).', sel:'#hist-box', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='historico'; render(); }},
+  {titulo:'Histórico', texto:'A aba Histórico é a linha do tempo do que já foi concluído neste cliente, da atividade mais recente pra mais antiga. É o histórico honesto do que dá pra saber pela planilha — log completo de quem mudou o quê ainda não existe.', sel:'#hist-box', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='historico'; render(); }},
   // --- quick wins / celebrações ---
   {titulo:'O que é uma Quick Win (QW)', texto:'QW é uma conquista que prova o valor do produto pro cliente — um marco que dá vontade de comemorar junto com ele. Aparecem marcadas com ★ em toda a Central.', sel:'.nitem[data-v="celebracoes"]', antes:()=>{VIEW='celebracoes';CLI=null;render();}},
   {titulo:'Regra da casa: celebrar é sério', texto:'Celebração é SEMPRE manual e SEMPRE com verificação (print, confirmação do cliente) — nunca automática. Antes de anunciar uma QW pro cliente, confira a verificação registrada na atividade.', sel:'.tiles', antes:()=>{VIEW='celebracoes';CLI=null;render();}},
@@ -1791,8 +1848,38 @@ function renderCliente(v){
       <textarea id="cli-obs" style="width:100%;min-height:90px" placeholder="Notas curtas visíveis no topo da página do cliente...">${esc(c.obs)}</textarea>
       <div style="display:flex;align-items:center;margin-top:8px"><span class="mnote">Aparece como destaque acima das abas.</span>
       <button class="btn" style="margin-left:auto" onclick="salvaCampo(event,'${esc(c.aba)}','K2','cli-obs','obs')">Salvar observações</button></div></div>`;
-  if(ABA_CLI==='metas') corpo=`<div class="box"><h2>◎ Metas extras do cliente</h2><div class="mnote">Metas específicas deste cliente além do modelo padrão. Ex: "Atingir 100 leads em 30 dias", "Gravar 5 vídeos em abril".</div><div class="vazio" style="text-align:center;padding:26px">◎<br>Nenhuma meta extra cadastrada<br><span style="font-size:11px">na v1, meta extra entra como linha nova no fim da aba do cliente na planilha (tempo "sem prazo"); o painel lê e mostra junto das atividades</span></div></div>`;
-  if(ABA_CLI==='historico') corpo=`<div class="box" id="hist-box"><div class="aviso">O histórico completo (log de alterações) entra na Fase 5, quando o dado sair da planilha pro banco. Por ora o histórico é o próprio versionamento do Google Sheets (Arquivo &gt; Histórico de versões).</div></div>`;
+  if(ABA_CLI==='metas'){
+    // Metas extras == as tarefas avulsas do cliente (acao:'nova_tarefa').
+    // Identifica pelo ITEM (tempo==='avulsa', valor literal gravado pelo
+    // instanciador.gs:680 na coluna A), NUNCA pelo título da fase — no build
+    // local (planilha) a linha vem dentro de uma fase "MÓDULO EXTRA", mas no
+    // app publicado (MODO_APP, dados do espelho Supabase) carregaDados()
+    // agrupa tudo numa fase única "ATIVIDADES" e a fase "MÓDULO EXTRA" nunca
+    // existe — filtrar por título deixava esta aba sempre vazia no app real
+    // mesmo com tarefa avulsa cadastrada (achado grave 20/08).
+    const itensExtra = its.filter(i=>i.tempo==='avulsa');
+    corpo = `<div class="box"><h2>◎ Metas extras do cliente${itensExtra.length?` <span class="bdg">${itensExtra.length}</span>`:''}</h2>
+      <div class="mnote" style="margin-bottom:10px">Tarefas avulsas criadas para este cliente além do modelo padrão — pedidos pontuais, lembretes, entregas específicas. As mesmas tarefas também aparecem em Etapas, junto com o resto.</div>
+      ${itensExtra.length
+        ? itensExtra.map(i=>fitem(c,i)).join('')
+        : `<div class="vazio" style="text-align:center;padding:26px">◎<br>Nenhuma tarefa avulsa encontrada nos dados carregados</div>`}
+      <div style="margin-top:12px"><button class="btn sec cli-nova-tarefa" onclick="abreNovaTarefa('${esc(c.aba)}')">+ Nova tarefa</button></div>
+    </div>`;
+  }
+  if(ABA_CLI==='historico'){
+    // Linha do tempo real: tudo que já tem Data de feito na planilha,
+    // ordenado do mais recente pro mais antigo — reusa fitem() (mesmos
+    // dados: responsável, prazo, status, ★ quando é QW). Antes a aba só
+    // avisava "entra na Fase 5" e não mostrava nada do que já existia
+    // (achado 20/08).
+    const feitos = its.filter(i=>i.feito).slice().sort((a,b)=> b.feito.localeCompare(a.feito));
+    corpo = `<div class="box" id="hist-box"><h2>🕘 Linha do tempo${feitos.length?` <span class="bdg">${feitos.length}</span>`:''}</h2>
+      ${feitos.length
+        ? feitos.map(i=>fitem(c,i)).join('')
+        : `<div class="vazio" style="text-align:center;padding:26px">Nada concluído ainda para este cliente.</div>`}
+      <div class="mnote" style="margin-top:12px">Isto é o histórico honesto do que dá pra saber pela planilha (data de feito de cada atividade). Log completo de alterações — quem mudou o quê, quando — chega quando o dado sair da planilha pro banco, sem data prevista.</div>
+    </div>`;
+  }
 
   v.innerHTML=`<span class="cli-volta" onclick="CLI=null;render()">← Voltar para clientes</span>
   <div class="cli-capa"></div><div class="cli-head"><div class="cli-ava">${ini(c.nome)}</div><h1>${esc(c.nome)}</h1>
