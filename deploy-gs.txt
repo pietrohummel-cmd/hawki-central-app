@@ -1,0 +1,1335 @@
+/**
+ * Instanciador de cliente — Central de Projetos Hawki (Fase 2)
+ * ---------------------------------------------------------------
+ * Cria a aba "Cliente – {Nome}" de um jeito novo cliente a partir dos modelos
+ * de prazo (abas "Modelo Sofia" / "Modelo Tráfego"), calcula as datas
+ * previstas e o status por fórmula, e lança a linha correspondente no
+ * "Registro de Ativação". Substitui o script Python que instanciou os
+ * 2 primeiros clientes manualmente em 03/08/2026 (mesma spec, mesmo layout).
+ *
+ * Instalação: ver README.md nesta pasta.
+ *
+ * Regras duras:
+ *  - NUNCA hardcodar as atividades de Sofia/Tráfego — elas são lidas em
+ *    runtime das abas "Modelo Sofia" e "Modelo Tráfego" (os modelos evoluem).
+ *  - O único bloco fixo no código é COMBO_TRAFEGO (linhas de tráfego
+ *    adaptadas D+n + as 2 QWs exclusivas do combo) — idêntico ao script
+ *    Python de referência, porque é uma seleção curada (§4.7 do plano),
+ *    não uma cópia do modelo inteiro.
+ *  - Fórmulas usam vírgula (sintaxe canônica do Apps Script); o locale
+ *    pt-BR da planilha converte a exibição sozinho.
+ */
+
+/**
+ * ACIONADOR onEditCentral — instalação manual (uma vez, precisa de humano;
+ * não existe jeito de instalar acionador instalável só com código):
+ *   1. Abrir esta planilha > menu Extensões > Apps Script.
+ *   2. No editor, clicar no ícone de relógio "Acionadores" (barra lateral
+ *      esquerda).
+ *   3. "+ Adicionar acionador" (canto inferior direito).
+ *   4. Configurar:
+ *        Função a executar: onEditCentral
+ *        Implantação: Head
+ *        Fonte do evento: Da planilha
+ *        Tipo de evento: Ao editar
+ *   5. Salvar — autorizar o acesso pedido. Precisa ser acionador INSTALÁVEL
+ *      porque a função chama UrlFetchApp (espelho no Supabase); o onEdit(e)
+ *      simples do Apps Script roda em sandbox sem essa permissão — por isso
+ *      a função se chama onEditCentral, não onEdit.
+ *   6. Se a planilha for duplicada/copiada, repetir o passo a passo na cópia
+ *      (o acionador não é copiado junto).
+ * Sem este passo manual, uma edição feita direto na planilha (fora do
+ * painel) só chega ao espelho Supabase no próximo cron (3x/dia), não em
+ * tempo real.
+ */
+
+// ---------- CONFIG ----------
+var NOME_ABA_MODELO_SOFIA = 'Modelo Sofia';
+var NOME_ABA_MODELO_TRAFEGO = 'Modelo Tráfego';
+var NOME_ABA_REGISTRO = 'Registro de Ativação';
+var PREFIXO_ABA_CLIENTE = 'Cliente – ';
+var LARGURA_COL_ATIVIDADE = 420;
+var LARGURA_COL_PADRAO_DIREITA = 130;
+
+// Bloco de tráfego do combo — §4 do plano ("entram intactas do tráfego" + as
+// 2 QWs exclusivas). Constante de propósito: é uma curadoria, não o modelo
+// inteiro de Tráfego. Se o combo mudar de regra, editar aqui.
+var COMBO_TRAFEGO = [
+  { fase: 'MÓDULO TRÁFEGO (combo — o relógio da Sofia manda; Gate 2 governa)' },
+  { tempo: 'D+7',  tipo: 'PP', papel: 'GT',     ativ: 'Reunião de briefing + setup realizada', verif: '' },
+  { tempo: 'D+7',  tipo: 'PP', papel: 'GT',     ativ: 'Primeiros scripts de vídeo enviados', verif: '' },
+  { tempo: 'D+7',  tipo: 'QW', papel: 'GT',     ativ: 'Primeira campanha ativa em até 24h após SMOKE-A verde (regra 4 do combo)', verif: '' },
+  { tempo: 'D+8',  tipo: 'OV', papel: 'GT',     ativ: '3 mídias padrão criadas sem depender do cliente (GT + IA de imagem, decisão 3)', verif: '' },
+  { tempo: 'D+8',  tipo: 'OV', papel: 'SÓC',    ativ: 'Google Meu Negócio reestruturado', verif: '' },
+  { tempo: 'D+8',  tipo: 'OV', papel: 'SÓC',    ativ: 'QR Code do GMN para avaliações', verif: '' },
+  { tempo: 'D+15', tipo: 'PP', papel: 'GT',     ativ: 'Primeiros anúncios editados, aprovados e postados', verif: '' },
+  { tempo: 'D+20', tipo: 'PP', papel: 'SÓC+IA', ativ: 'Landing page no ar (constrói: sócio com Claude)', verif: '' },
+  { tempo: 'D+30', tipo: 'OV', papel: 'GT',     ativ: 'Linktree criado', verif: '' },
+  { tempo: 'D+40', tipo: 'QW', papel: 'SÓC',    ativ: 'Antes e depois do perfil do Instagram', verif: '' },
+  { tempo: 'D+40', tipo: 'OV', papel: 'SÓC',    ativ: 'Primeira estratégia de social selling', verif: '' },
+  { tempo: 'mensal', tipo: 'PP', papel: 'GT',   ativ: 'Otimização de campanha (critério: semáforo do Painel de Tráfego)', verif: '' },
+  { fase: 'QWs EXCLUSIVAS DO COMBO (a razão de vender combo)' },
+  { tempo: '1ª ocorrência', tipo: 'QW', papel: 'IA+SÓC', ativ: 'Primeiro lead de ANÚNCIO qualificado pela Sofia e agendado, conferido no PMS (a QW mais forte do portfólio: prova o funil inteiro)', verif: 'Print do PMS anexado. Sem print, aguardando verificação.' },
+  { tempo: '1ª ocorrência', tipo: 'QW', papel: 'SÓC', ativ: 'Primeiro paciente de ANÚNCIO que fechou tratamento (confirmação escrita do cliente)', verif: 'Confirmação escrita no grupo, rotulada como declarada.' }
+];
+
+// ---------- MENU ----------
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('🏗️ Central')
+    .addItem('Instanciar cliente novo', 'instanciarClienteNovo')
+    .addItem('Sincronizar agenda Google', 'sincronizarAgenda')
+    .addToUi();
+}
+
+// ---------- SYNC DE AGENDA (uma agenda POR PESSOA + visão de admin) ----------
+// Cria/atualiza uma agenda Google por pessoa do time ("Central · Adão" etc.)
+// com as atividades previstas e NÃO feitas dela nos próximos 120 dias.
+// Cada pessoa assina SÓ a própria agenda (o CS vê só o que é dele);
+// admin/supervisor assina todas = visão geral. Idempotente por tag.
+// Pra rodar sozinho: Apps Script > Acionadores > + > sincronizarAgenda > diário.
+// OAuth individual (evento dentro da agenda pessoal de cada um) = Fase 5.
+var AGENDA_PREFIXO = 'Central · ';
+var AGENDA_POR_PAPEL = { 'SÓC': 'Adão', 'WIL': 'William', 'PIE': 'Pietro', 'GT': 'Gestora', 'IA': 'Automação', 'CLI': 'Clientes', 'CRC': 'Clientes' };
+
+function sincronizarAgenda() {
+  var hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  var fim = new Date(hoje.getTime() + 120 * 86400000);
+  var cals = {}; // pessoa -> Calendar
+  function calDe(pessoa) {
+    if (cals[pessoa]) return cals[pessoa];
+    var nome = AGENDA_PREFIXO + pessoa;
+    var achadas = CalendarApp.getCalendarsByName(nome);
+    var cal = achadas.length ? achadas[0] : CalendarApp.createCalendar(nome);
+    cal.getEvents(hoje, fim).forEach(function (ev) {
+      if (ev.getTag('central') === '1') ev.deleteEvent();
+    });
+    cals[pessoa] = cal;
+    return cal;
+  }
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var criados = 0;
+  ss.getSheets().forEach(function (sh) {
+    if (sh.getName().indexOf(PREFIXO_ABA_CLIENTE) !== 0) return;
+    var nomeCli = String(sh.getRange('B1').getValue() || sh.getName().replace(PREFIXO_ABA_CLIENTE, ''));
+    var ultima = sh.getLastRow();
+    if (ultima < 6) return;
+    var vals = sh.getRange(6, 1, ultima - 5, 9).getValues(); // A..I
+    vals.forEach(function (row) {
+      var tempo = String(row[0] || '').trim();
+      if (!tempo || /^(FASE|MÓDULO|QWS )/i.test(tempo)) return;
+      var prev = row[4], feito = row[5];
+      if (!(prev instanceof Date) || (feito instanceof Date)) return;
+      if (prev < hoje || prev > fim) return;
+      var tipo = String(row[1] || '').trim();
+      var titulo = (tipo === 'QW' ? '★ ' : '') + '[' + nomeCli + '] ' + String(row[3] || '');
+      // evento vai pra agenda de CADA pessoa do papel (SÓC+CRC = duas agendas)
+      var papeis = String(row[2] || '').split('+');
+      var pessoasFeitas = {};
+      papeis.forEach(function (pp) {
+        var pessoa = AGENDA_POR_PAPEL[pp.trim()] || null;
+        if (!pessoa || pessoasFeitas[pessoa]) return;
+        pessoasFeitas[pessoa] = true;
+        var ev = calDe(pessoa).createAllDayEvent(titulo, prev, {
+          description: 'Central de Projetos Hawki · ' + tempo + ' · papel: ' + String(row[2] || '') +
+            (row[8] ? '\nVerificação: ' + row[8] : '') + '\nPlanilha: ' + ss.getUrl(),
+        });
+        ev.setTag('central', '1');
+        criados++;
+      });
+    });
+  });
+  var nomes = Object.keys(cals).map(function (p) { return AGENDA_PREFIXO + p; }).join(' · ');
+  try { SpreadsheetApp.getUi().alert('Agendas sincronizadas: ' + criados + ' evento(s) em ' + Object.keys(cals).length + ' agenda(s):\n' + nomes + '\n\nCompartilhar cada agenda SÓ com a pessoa dona (Google Calendar > config > compartilhar). Admin assina todas = visão geral.'); } catch (e) {}
+  return criados;
+}
+
+// ---------- FLUXO PRINCIPAL ----------
+function instanciarClienteNovo() {
+  var ui = SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  try {
+    // 1) Nome do cliente
+    var respNome = ui.prompt('Instanciar cliente novo — 1/4', 'Nome do cliente:', ui.ButtonSet.OK_CANCEL);
+    if (respNome.getSelectedButton() !== ui.Button.OK) return;
+    var nome = (respNome.getResponseText() || '').trim();
+    if (!nome) {
+      ui.alert('Nome vazio. Operação cancelada — nada foi alterado.');
+      return;
+    }
+    if (nome.length > 90) {
+      ui.alert('Nome muito longo (máx. ~90 caracteres pro nome da aba caber). Operação cancelada.');
+      return;
+    }
+    if (/[\[\]\*\?\/\\:]/.test(nome)) {
+      ui.alert('Nome contém caractere não permitido em nome de aba ( [ ] * ? / \\ : ). Remova e tente de novo.');
+      return;
+    }
+
+    var nomeAba = PREFIXO_ABA_CLIENTE + nome;
+    if (ss.getSheetByName(nomeAba)) {
+      ui.alert('Já existe uma aba "' + nomeAba + '". Nada foi criado — apague ou renomeie a aba existente antes de tentar de novo.');
+      return;
+    }
+
+    // 2) Tipo de contrato
+    var respTipo = ui.prompt(
+      'Instanciar cliente novo — 2/4',
+      'Tipo de contrato:\n1 = Sofia (IA only)\n2 = Tráfego\n3 = Combo (Tráfego + Sofia)',
+      ui.ButtonSet.OK_CANCEL
+    );
+    if (respTipo.getSelectedButton() !== ui.Button.OK) return;
+    var tipoTxt = (respTipo.getResponseText() || '').trim();
+    if (['1', '2', '3'].indexOf(tipoTxt) === -1) {
+      ui.alert('Tipo inválido: digite 1, 2 ou 3. Operação cancelada — nada foi alterado.');
+      return;
+    }
+    var tipo = Number(tipoTxt);
+
+    // 3) Data de assinatura (obrigatória)
+    var respAssinatura = ui.prompt('Instanciar cliente novo — 3/4', 'Data de assinatura (dd/mm/aaaa):', ui.ButtonSet.OK_CANCEL);
+    if (respAssinatura.getSelectedButton() !== ui.Button.OK) return;
+    var dataAssinatura = parseDataBR_(respAssinatura.getResponseText());
+    if (!dataAssinatura) {
+      ui.alert('Data de assinatura inválida. Use o formato dd/mm/aaaa (ex.: 04/08/2026). Operação cancelada.');
+      return;
+    }
+
+    // 4) Data de kickoff (opcional — Enter pula)
+    var respKickoff = ui.prompt('Instanciar cliente novo — 4/4', 'Data de kickoff (dd/mm/aaaa) — deixe em branco e clique OK para pular:', ui.ButtonSet.OK_CANCEL);
+    if (respKickoff.getSelectedButton() !== ui.Button.OK) return;
+    var kickoffTxt = (respKickoff.getResponseText() || '').trim();
+    var dataKickoff = null;
+    if (kickoffTxt) {
+      dataKickoff = parseDataBR_(kickoffTxt);
+      if (!dataKickoff) {
+        ui.alert('Data de kickoff inválida. Use dd/mm/aaaa ou deixe em branco. Operação cancelada.');
+        return;
+      }
+    }
+
+    // ---- montar as linhas de atividade conforme o tipo ----
+    var servicoLabel, linhas;
+    if (tipo === 1) {
+      servicoLabel = 'Sofia (IA only)';
+      linhas = lerModelo_(NOME_ABA_MODELO_SOFIA);
+    } else if (tipo === 2) {
+      servicoLabel = 'Tráfego';
+      linhas = converterTrafegoParaD_(lerModelo_(NOME_ABA_MODELO_TRAFEGO));
+    } else {
+      servicoLabel = 'COMBO (Tráfego + Sofia)';
+      linhas = montarLinhasCombo_(lerModelo_(NOME_ABA_MODELO_SOFIA));
+    }
+
+    if (!linhas || linhas.length === 0) {
+      ui.alert('O modelo correspondente não retornou nenhuma linha de atividade. Confira as abas "' + NOME_ABA_MODELO_SOFIA + '" / "' + NOME_ABA_MODELO_TRAFEGO + '". Operação cancelada, nada foi criado.');
+      return;
+    }
+
+    // ---- montar a matriz de valores da aba ----
+    var rows = montarAba_(servicoLabel, dataAssinatura, dataKickoff, linhas, nome);
+
+    // ---- criar a aba e escrever ----
+    var sheet = ss.insertSheet(nomeAba);
+    sheet.getRange(1, 1, rows.length, 9).setValues(rows);
+    sheet.setFrozenRows(5);
+    sheet.getRange(5, 1, 1, 9).setFontWeight('bold');
+    sheet.setColumnWidth(4, LARGURA_COL_ATIVIDADE); // D = Atividade
+    for (var c = 5; c <= 9; c++) sheet.setColumnWidth(c, LARGURA_COL_PADRAO_DIREITA); // E..I
+
+    // ---- Registro de Ativação ----
+    var regSheet = ss.getSheetByName(NOME_ABA_REGISTRO);
+    if (regSheet) {
+      regSheet.appendRow([nome, dataAssinatura, dataKickoff || '', 'nenhum', '', '', 'SÓC', '']);
+    }
+
+    ss.setActiveSheet(sheet);
+    sheet.getRange('A1').activate();
+
+    var aviso = 'Cliente "' + nome + '" instanciado (' + servicoLabel + ').\nAba criada: ' + nomeAba + '.';
+    if (!regSheet) {
+      aviso += '\n\nATENÇÃO: aba "' + NOME_ABA_REGISTRO + '" não foi encontrada — a linha de registro NÃO foi lançada. Adicione manualmente.';
+    }
+    if (!dataKickoff) {
+      aviso += '\n\nLembrete: quando o kickoff acontecer, preencha a Âncora D (célula E2) NO DIA — nunca re-ancorar depois.';
+    }
+
+    // Espelho imediato no Supabase — mesmo motivo do doPost 'instanciar': sem
+    // isto, cliente criado por aqui (menu do Sheets, fora do painel) some do
+    // app.html publicado até o próximo cron (3x/dia). A planilha já está
+    // correta de qualquer forma; isto é só aviso.
+    SpreadsheetApp.flush();
+    var espCliente = _espelharCliente_(sheet, nomeAba, nome, servicoLabel);
+    var espAtividades = _espelharAbaCompleta_(sheet, nomeAba);
+    if (espCliente !== 'ok' || espAtividades !== 'ok') {
+      aviso += '\n\nEspelho Supabase: cliente=' + espCliente + ' · atividades=' + espAtividades +
+        ' (a planilha já está correta; o painel publicado pode demorar até o próximo sync).';
+    }
+    ui.alert(aviso);
+
+  } catch (erro) {
+    ui.alert('Erro ao instanciar cliente: ' + erro + '\n\nNada foi confirmado como concluído — confira se a aba ficou pela metade e apague antes de tentar de novo.');
+  }
+}
+
+// ---------- LEITURA DOS MODELOS (runtime, nunca hardcodada) ----------
+
+/**
+ * Lê uma aba de modelo (Modelo Sofia ou Modelo Tráfego) e devolve uma lista de
+ * objetos {tempo, tipo, papel, ativ, verif} ou {fase: texto} para linhas de
+ * cabeçalho de fase. Localiza as colunas pelo TEXTO do cabeçalho (linha 1),
+ * não por posição fixa — os dois modelos têm layouts de coluna diferentes
+ * (Sofia tem "Fonte no Plano Mestre" entre Atividade e Verificação; Tráfego não).
+ * Para de ler na primeira linha totalmente vazia (rodapé de notas).
+ */
+function lerModelo_(nomeAba) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(nomeAba);
+  if (!sh) {
+    throw new Error('Aba de modelo "' + nomeAba + '" não encontrada.');
+  }
+  var dados = sh.getDataRange().getValues();
+  if (dados.length < 2) return [];
+
+  var header = dados[0].map(function (h) { return String(h || '').trim(); });
+  var idxTempo = header.indexOf('Tempo');
+  var idxTipo = header.indexOf('Tipo');
+  var idxPapel = header.indexOf('Papel');
+  var idxAtiv = header.indexOf('Atividade');
+  var idxVerif = acharColuna_(header, 'Verificação');
+
+  if (idxTempo === -1 || idxTipo === -1 || idxPapel === -1 || idxAtiv === -1) {
+    throw new Error('Cabeçalho de "' + nomeAba + '" não tem as colunas esperadas (Tempo/Tipo/Papel/Atividade). Confira a linha 1.');
+  }
+
+  var linhas = [];
+  for (var i = 1; i < dados.length; i++) {
+    var row = dados[i];
+    var c0 = String(row[idxTempo] || '').trim();
+    if (!c0) break; // linha vazia encerra a leitura (rodapé de notas abaixo)
+
+    if (c0.toUpperCase().indexOf('FASE') === 0) {
+      linhas.push({ fase: c0 });
+      continue;
+    }
+
+    var ativ = String(row[idxAtiv] || '').trim();
+    if (!ativ) continue; // linha sem atividade não é uma linha de dado válida
+
+    linhas.push({
+      tempo: c0,
+      tipo: String(row[idxTipo] || '').trim(),
+      papel: String(row[idxPapel] || '').trim(),
+      ativ: ativ,
+      verif: idxVerif > -1 ? String(row[idxVerif] || '').trim() : ''
+    });
+  }
+  return linhas;
+}
+
+/** Busca uma coluna pelo texto do cabeçalho, tolerando pequenas variações. */
+function acharColuna_(header, textoAlvo) {
+  var i = header.indexOf(textoAlvo);
+  if (i > -1) return i;
+  var alvoLower = textoAlvo.toLowerCase();
+  for (var j = 0; j < header.length; j++) {
+    if (header[j].toLowerCase().indexOf(alvoLower) === 0) return j;
+  }
+  return -1;
+}
+
+/**
+ * Tipo 2 (Tráfego puro): os prazos do Modelo Tráfego são números soltos
+ * ("7", "8", "13"...), contados a partir do kickoff — mesma lógica D+n do
+ * relógio da Sofia. Converte só os numéricos; "sem prazo"/"mensal"/
+ * "aniversário" ficam como estão (linha sem fórmula de prazo).
+ */
+function converterTrafegoParaD_(linhas) {
+  return linhas.map(function (l) {
+    if (l.fase) return l;
+    if (/^\d+$/.test(l.tempo)) {
+      return { tempo: 'D+' + l.tempo, tipo: l.tipo, papel: l.papel, ativ: l.ativ, verif: l.verif };
+    }
+    return l;
+  });
+}
+
+/**
+ * Tipo 3 (Combo): base = Modelo Sofia inteiro (relógio da Sofia manda, §4.2),
+ * com a linha D+30/QW substituída pela celebração única do combo (§4, item
+ * "QWs exclusivas"), seguida do bloco fixo COMBO_TRAFEGO.
+ */
+function montarLinhasCombo_(sofiaLinhas) {
+  var out = [];
+  for (var i = 0; i < sofiaLinhas.length; i++) {
+    var l = sofiaLinhas[i];
+    if (!l.fase && l.tempo === 'D+30' && l.tipo === 'QW') {
+      l = {
+        tempo: l.tempo,
+        tipo: l.tipo,
+        papel: l.papel,
+        ativ: 'Máquina completa rodando (anúncio, Sofia, CRC, agenda): 30 dias fechados — substitui as duas celebrações de 30d (combo)',
+        verif: l.verif
+      };
+    }
+    out.push(l);
+  }
+  return out.concat(COMBO_TRAFEGO);
+}
+
+// ---------- MONTAGEM DA ABA ----------
+
+/**
+ * Gera a matriz de valores (9 colunas, A-I) da aba de cliente: cabeçalho
+ * (linhas 1-5, âncoras em E1/E2) + uma linha por atividade, com fórmulas de
+ * Data prevista (E) e Status (G). Espelha exatamente o layout do script
+ * Python de referência (instanciação manual de 03/08/2026).
+ */
+function montarAba_(servico, dataAssinatura, dataKickoff, linhas, nomeCliente) {
+  var rows = [];
+  rows.push(['CLIENTE:', nomeCliente, '', 'Âncora A — assinatura:', dataAssinatura, '', '', '', '']);
+  rows.push(['Serviço:', servico, '', 'Âncora D — kickoff realizado:', dataKickoff || '', '← sócio preenche NO DIA do kickoff. NUNCA re-ancorar depois.', '', '', '']);
+  rows.push(['Como usar: preencher só DATA DE FEITO (F) e, se atrasar, MOTIVO (H). Status calcula sozinho. QW só conclui com a verificação da coluna I atendida.', '', '', '', '', '', '', '', '']);
+  rows.push(['', '', '', '', '', '', '', '', '']);
+  rows.push(['Tempo', 'Tipo', 'Papel', 'Atividade', 'Data prevista', 'Data de feito', 'Status', 'Motivo', 'Verificação / Nota']);
+
+  var r = rows.length; // 5 linhas de cabeçalho já escritas; próxima linha da planilha (1-indexed) = r + 1
+  for (var i = 0; i < linhas.length; i++) {
+    var l = linhas[i];
+    r += 1;
+
+    if (l.fase) {
+      rows.push([l.fase, '', '', '', '', '', '', '', '']);
+      continue;
+    }
+
+    var t = l.tempo;
+    var prev;
+    if (t.indexOf('A+') === 0) {
+      var nA = parseInt(t.substring(2), 10);
+      prev = '=IF($E$1="","",WORKDAY($E$1,' + nA + '))';
+    } else if (t.indexOf('D+') === 0) {
+      var nD = parseInt(t.substring(2), 10);
+      prev = '=IF($E$2="","",$E$2+' + nD + ')';
+    } else {
+      prev = ''; // "sem prazo" / "mensal" / "aniversário" / "1ª ocorrência": marco sem contador de atraso
+    }
+
+    var status;
+    if (prev) {
+      status = '=IF(F' + r + '<>"","✅ Feito",IF(E' + r + '="","⏳ aguarda âncora",' +
+        'IF(TODAY()>E' + r + ',IF(B' + r + '="QW","🔴 ATRASO QW","🔴 Atrasado"),' +
+        'IF(TODAY()=E' + r + ',"🟡 HOJE","⬜ Pendente"))))';
+    } else {
+      status = '=IF(F' + r + '<>"","✅ Feito","◽ sem prazo")';
+    }
+
+    rows.push([t, l.tipo, l.papel, l.ativ, prev, '', status, '', l.verif || '']);
+  }
+  return rows;
+}
+
+// ---------- UTIL ----------
+
+/** Converte "dd/mm/aaaa" em Date, validando data real (rejeita 31/02 etc). */
+function parseDataBR_(texto) {
+  if (!texto) return null;
+  var t = String(texto).trim();
+  var m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  var dia = parseInt(m[1], 10);
+  var mes = parseInt(m[2], 10);
+  var ano = parseInt(m[3], 10);
+  if (mes < 1 || mes > 12 || dia < 1 || dia > 31 || ano < 2000 || ano > 2100) return null;
+  var d = new Date(ano, mes - 1, dia, 0, 0, 0);
+  if (d.getFullYear() !== ano || d.getMonth() !== mes - 1 || d.getDate() !== dia) return null; // datas impossíveis
+  return d;
+}
+
+
+// =====================================================================
+// API DO PAINEL (App da Web) — escrita da Central de Projetos
+// ---------------------------------------------------------------------
+// Implantar: Implantar > Nova implantação > App da Web > executar como VOCÊ
+// > acesso "Qualquer pessoa com o link" > copiar a URL /exec e colar na
+// tela Configurações do painel (hawki-central.html).
+// O painel manda POST text/plain com JSON {k, acao, ...}. Token simples
+// abaixo — trocar se vazar. Só aceita escrita em abas "Cliente – *".
+// =====================================================================
+var API_TOKEN = '__TOKEN_API__';
+
+// Segredo do modo local (hawki_central.html). API_TOKEN acima vaza pro
+// app.html público (é lido de graça no view-source) — NUNCA basta sozinho
+// pra virar admin. K_LOCAL_TOKEN só é embutido no template local
+// (__MODO_APP__=false, build_central.py); o app.html publicado (modo=true)
+// nunca recebe este valor. Trocar os dois juntos se vazar.
+var K_LOCAL_TOKEN = '__TOKEN_LOCAL__';
+
+// ---------------------------------------------------------------
+// VALIDAÇÃO SUPABASE (Fase F5-app) — login individual do app.html.
+// URL e chave publishable são públicas por design (protegidas por RLS
+// no lado do banco); não são segredo.
+// ---------------------------------------------------------------
+var SUPABASE_URL = 'https://muerqpmwvvewxjusgubb.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_fD2RW8rAnJgp1XkzRpnZcQ_i0MnkfCZ';
+
+/**
+ * Valida quem está mandando uma escrita pro doPost.
+ *  - payload SEM sb_token: só é modo local (hawki_central.html) se vier
+ *    junto o segredo K_LOCAL_TOKEN, que NUNCA é embutido no app.html
+ *    público (build_central.py só injeta esse valor no template
+ *    __MODO_APP__=false). Sem os dois, é negado — o token 'k' sozinho
+ *    NÃO basta mais (ele é público, visível no view-source do app.html).
+ *  - payload COM sb_token: modo app (app.html) — valida a sessão via
+ *    GET /auth/v1/user (pega o uid), depois confere aprovado+cargo via
+ *    GET /rest/v1/profiles. Escrita exige aprovado=true E cargo admin
+ *    ou cs (cs pode marcar feito / editar; gt e automacao só leem hoje).
+ * Retorna {ok, cargo, erro}.
+ */
+function _validaSb_(p) {
+  if (!p.sb_token) {
+    if (p.k_local === K_LOCAL_TOKEN) {
+      return { ok: true, cargo: 'admin', erro: null }; // modo local: segredo local bateu
+    }
+    return { ok: false, cargo: null, erro: 'modo local exige k_local; modo app exige login (sb_token)' };
+  }
+  try {
+    var ru = UrlFetchApp.fetch(SUPABASE_URL + '/auth/v1/user', {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + p.sb_token },
+      muteHttpExceptions: true,
+    });
+    if (ru.getResponseCode() >= 300) return { ok: false, cargo: null, erro: 'sessão inválida ou expirada — entre de novo no app' };
+    var user = JSON.parse(ru.getContentText());
+    if (!user || !user.id) return { ok: false, cargo: null, erro: 'sessão sem usuário' };
+
+    var rp = UrlFetchApp.fetch(
+      SUPABASE_URL + '/rest/v1/profiles?id=eq.' + encodeURIComponent(user.id) + '&select=aprovado,cargo',
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + p.sb_token }, muteHttpExceptions: true }
+    );
+    if (rp.getResponseCode() >= 300) return { ok: false, cargo: null, erro: 'não conseguiu conferir seu perfil' };
+    var perfis = JSON.parse(rp.getContentText());
+    if (!perfis || !perfis.length) return { ok: false, cargo: null, erro: 'perfil não encontrado' };
+    var perfil = perfis[0];
+    if (!perfil.aprovado) return { ok: false, cargo: perfil.cargo, erro: 'sua conta ainda não foi aprovada por um admin' };
+    if (perfil.cargo !== 'admin' && perfil.cargo !== 'cs') {
+      return { ok: false, cargo: perfil.cargo, erro: 'seu cargo (' + perfil.cargo + ') não tem permissão de escrita' };
+    }
+    return { ok: true, cargo: perfil.cargo, erro: null };
+  } catch (err) {
+    return { ok: false, cargo: null, erro: 'falha ao validar sessão: ' + err };
+  }
+}
+
+/**
+ * Reconsulta o Supabase com o JWT do próprio usuário (não o service role)
+ * pra conferir se a linha (cliente_aba+row) é visível pra ele sob a RLS de
+ * atividades. Usado só pra cargo não-admin em acao:'set' — a permissão de
+ * escrita no GAS passa a herdar exatamente a de leitura no banco, em vez
+ * de confiar cegamente em "cargo admin ou cs = pode escrever qualquer
+ * linha de qualquer cliente".
+ */
+function _linhaVisivelParaEscrita_(aba, row, sbToken) {
+  try {
+    var url = SUPABASE_URL + '/rest/v1/atividades?select=id&cliente_aba=eq.' +
+      encodeURIComponent(aba) + '&row=eq.' + encodeURIComponent(row);
+    var r = UrlFetchApp.fetch(url, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + sbToken },
+      muteHttpExceptions: true,
+    });
+    if (r.getResponseCode() >= 300) return false;
+    var linhas = JSON.parse(r.getContentText());
+    return !!(linhas && linhas.length);
+  } catch (err) {
+    return false; // qualquer falha na reconsulta = nega por padrão
+  }
+}
+
+// ---------------------------------------------------------------
+// NOVA TAREFA (avulsa) — pedido do William (CS), 20/08/2026: botão de fácil
+// acesso pra criar e designar tarefa dentro de um cliente. Toda tarefa nasce
+// DENTRO de um cliente (sem tarefa "sem cliente" nesta v1). Autorização
+// idêntica à de 'set' (a checagem global logo no início do doPost já exige
+// cargo admin ou cs — gt/automacao nunca chega aqui). Superfície de escrita
+// nova = trata todo o input como hostil: whitelist de papel, tamanho máximo,
+// bloqueio de fórmula ("=" no início) e de quebra de linha.
+// ---------------------------------------------------------------
+// ATENÇÃO (achado grave 20/08, ainda não fechado): a sigla 'WIL' (William)
+// existe aqui e em mais 5 lugares (build_central.py: PESSOA_POR_PAPEL,
+// SIGLA_POR_PESSOA/PAPEL_NOME, COR_PAPEL; instanciador.gs: AGENDA_POR_PAPEL)
+// mas NINGUÉM confirmou que a policy RLS 'cargo_ve_papel' do Supabase
+// (projeto muerqpmwvvewxjusgubb) inclui 'WIL' no conjunto que o cargo 'cs'
+// enxerga. Se não incluir: toda atividade com papel=WIL grava na planilha
+// normalmente, mas SOME do app.html (carregaDados() lê só o que a RLS
+// deixa) e dá "acesso negado" pro próprio dono ao tentar marcar feito.
+// Enquanto isso não for confirmado/corrigido no banco (ver central/rls.sql
+// nesta pasta), o app.html (build_central.py) tira 'William' das listas de
+// Responsável do painel — cria/edita tarefa continua liberado pros outros
+// papéis. Reverter essa exclusão assim que a policy for atualizada.
+var SIGLA_PAPEL_VALIDA_ = { 'SÓC': 1, 'WIL': 1, 'PIE': 1, 'GT': 1, 'IA': 1, 'CLI': 1, 'CRC': 1 };
+var NOME_MODULO_EXTRA = 'MÓDULO EXTRA';
+// Texto idêntico ao DESC_FASE['MÓDULO EXTRA'] / DESC_MODULO_EXTRA do
+// build_central.py — definição única (regra da casa), mesmo que o parser
+// nunca leia esta coluna D do cabeçalho (só existe pra quem olha a planilha
+// direto). Trocar aqui SEMPRE trocar junto nos dois lugares do Python.
+var DESC_MODULO_EXTRA = 'Tarefas avulsas do time — criadas no painel, sem prazo automático do modelo.';
+
+/**
+ * Sanitiza um campo de texto livre: trim, tamanho máx., sem prefixo de
+ * injeção de fórmula e sem quebra de linha. Vazio é aceito (o chamador
+ * decide se o campo é obrigatório).
+ *
+ * O bloqueio cobre os 4 prefixos que o Sheets (e o Excel/CSV no export)
+ * interpretam como início de fórmula/expressão — "=" sozinho deixava passar
+ * "+"/"-"/"@", que o setValues (semântica USER_ENTERED) também converte em
+ * fórmula executável (achado grave 20/08: +IMPORTXML(...) exfiltra dado).
+ * Tab também é bloqueado por poder confundir o parser de CSV no export.
+ */
+function _sanitizaTexto_(txt, max) {
+  var s = String(txt == null ? '' : txt).trim();
+  if (!s) return { ok: true, valor: '' };
+  if (s.length > max) return { ok: false, erro: 'acima de ' + max + ' caracteres' };
+  if (/^[=+\-@\t]/.test(s)) return { ok: false, erro: 'não pode começar com = + - @' };
+  if (/[\r\n]/.test(s)) return { ok: false, erro: 'não pode ter quebra de linha' };
+  return { ok: true, valor: s };
+}
+
+/** Valida "AAAA-MM-DD" (data real, rejeita 31/02 etc.) ou vazio (= sem prazo). Devolve {ok:false} se malformado. */
+function _parsePrazoISO_(txt) {
+  var s = String(txt == null ? '' : txt).trim();
+  if (!s) return { ok: true, data: null };
+  var m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return { ok: false };
+  var ano = parseInt(m[1], 10), mes = parseInt(m[2], 10), dia = parseInt(m[3], 10);
+  if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return { ok: false };
+  var d = new Date(ano, mes - 1, dia, 0, 0, 0);
+  if (d.getFullYear() !== ano || d.getMonth() !== mes - 1 || d.getDate() !== dia) return { ok: false };
+  return { ok: true, data: d };
+}
+
+/**
+ * Monta a fórmula de Status (coluna G) pra uma linha de tarefa avulsa, cujo
+ * prazo (coluna E) é um VALOR de data direto (não uma fórmula de âncora como
+ * nas linhas do modelo) — por isso não existe o estado "⏳ aguarda âncora"
+ * daqui; só "sem prazo" (E vazio) ou o cálculo normal de atraso/hoje/pendente.
+ * Mesmo padrão de montarAba_ (linhas 385-392), com os dois ramos (com/sem
+ * prazo) fundidos num só IF porque aqui a checagem "E vazio" já é suficiente.
+ */
+function _formulaStatusAvulsa_(r) {
+  return '=IF(F' + r + '<>"","✅ Feito",IF(E' + r + '="","◽ sem prazo",' +
+    'IF(TODAY()>E' + r + ',IF(B' + r + '="QW","🔴 ATRASO QW","🔴 Atrasado"),' +
+    'IF(TODAY()=E' + r + ',"🟡 HOJE","⬜ Pendente"))))';
+}
+
+/** Acha a linha do cabeçalho "MÓDULO EXTRA" (coluna A) na aba, ou 0 se não existir ainda. */
+function _achaModuloExtra_(sh) {
+  var ultima = sh.getLastRow();
+  if (ultima < 6) return 0;
+  var colA = sh.getRange(6, 1, ultima - 5, 1).getValues();
+  for (var i = 0; i < colA.length; i++) {
+    if (String(colA[i][0] || '').trim() === NOME_MODULO_EXTRA) return 6 + i;
+  }
+  return 0;
+}
+
+/**
+ * Reconsulta o Supabase com o JWT do próprio usuário pra conferir se o
+ * CLIENTE (a aba) é visível pra ele sob a RLS — mesmo padrão e mesmo "nega
+ * por padrão em qualquer falha" de _linhaVisivelParaEscrita_ (linha 498),
+ * só que aqui não existe linha ainda (é criação), então a checagem é sobre
+ * o cliente. Sem isso, 'nova_tarefa' deixava qualquer cs aprovado escrever
+ * em QUALQUER aba 'Cliente – *', inclusive fora do próprio escopo de RLS
+ * (achado grave/médio 20/08).
+ */
+function _clienteVisivelParaEscrita_(aba, sbToken) {
+  try {
+    var url = SUPABASE_URL + '/rest/v1/clientes?select=aba&aba=eq.' + encodeURIComponent(aba) + '&limit=1';
+    var r = UrlFetchApp.fetch(url, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + sbToken },
+      muteHttpExceptions: true,
+    });
+    if (r.getResponseCode() >= 300) return false;
+    var linhas = JSON.parse(r.getContentText());
+    return !!(linhas && linhas.length);
+  } catch (err) {
+    return false; // qualquer falha na reconsulta = nega por padrão
+  }
+}
+
+function _novaTarefa_(p, sh, sbCheck) {
+  var vAtiv = _sanitizaTexto_(p.atividade, 200);
+  if (!vAtiv.ok) return _json({ ok: false, erro: 'atividade inválida: ' + vAtiv.erro });
+  if (!vAtiv.valor) return _json({ ok: false, erro: 'atividade é obrigatória' });
+
+  var papel = String(p.papel || '').trim().toUpperCase();
+  if (!SIGLA_PAPEL_VALIDA_[papel]) return _json({ ok: false, erro: 'papel inválido: ' + papel });
+
+  var tipo = String(p.tipo || '').trim().toUpperCase();
+  if (tipo !== 'QW' && tipo !== '') return _json({ ok: false, erro: 'tipo inválido (use "QW" ou vazio)' });
+
+  var prazoParsed = _parsePrazoISO_(p.prazo);
+  if (!prazoParsed.ok) return _json({ ok: false, erro: 'prazo inválido (use AAAA-MM-DD)' });
+
+  var vVerif = _sanitizaTexto_(p.verif, 200);
+  if (!vVerif.ok) return _json({ ok: false, erro: 'verificação inválida: ' + vVerif.erro });
+
+  // não-admin: permissão de escrita tem que herdar a de leitura (RLS) —
+  // mesma régua de 'set' (linhas 644-648), só que sobre o cliente inteiro,
+  // já que aqui não existe linha prévia pra reconsultar.
+  if (sbCheck.cargo !== 'admin') {
+    if (!_clienteVisivelParaEscrita_(p.aba, p.sb_token)) {
+      return _json({ ok: false, erro: 'acesso negado: este cliente não é do seu escopo' });
+    }
+  }
+
+  // concorrência: dois POSTs simultâneos calculando o mesmo getLastRow()
+  // sobrescreviam um ao outro (achado leve 20/08) — trava a escrita inteira
+  // (achar/criar cabeçalho + apender a linha) num lock de documento.
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(15000)) return _json({ ok: false, erro: 'planilha ocupada, tente de novo' });
+  try {
+    // acha (ou cria, uma única vez) o bloco de cabeçalho no fim da aba.
+    // r é derivado do headerRow que acabamos de calcular, nunca de um novo
+    // getLastRow() depois do setValues do cabeçalho — antes disso, se o
+    // Sheets não desse flush a tempo, a linha da tarefa podia sobrescrever
+    // o cabeçalho recém-criado (achado leve 20/08).
+    var headerRow = _achaModuloExtra_(sh);
+    var criouAgora = false;
+    if (!headerRow) {
+      headerRow = sh.getLastRow() + 1;
+      sh.getRange(headerRow, 1, 1, 9).setValues([[NOME_MODULO_EXTRA, '', '', DESC_MODULO_EXTRA, '', '', '', '', '']]);
+      criouAgora = true;
+    }
+    var r = criouAgora ? headerRow + 1 : sh.getLastRow() + 1;
+
+    // reforço além da sanitização de texto: força as colunas de texto livre
+    // (D atividade, I verificação) a formato "texto simples" antes de
+    // escrever, pra que nenhuma variação de prefixo de fórmula que passe
+    // batida vire expressão executável (defesa em profundidade do achado
+    // grave de injeção).
+    sh.getRange(r, 4).setNumberFormat('@');
+    sh.getRange(r, 9).setNumberFormat('@');
+
+    sh.getRange(r, 1, 1, 9).setValues([[
+      'avulsa', tipo, papel, vAtiv.valor, prazoParsed.data || '', '', _formulaStatusAvulsa_(r), '', vVerif.valor
+    ]]);
+
+    // espelho imediato — mesma régua de 'set' (linha 764-771): nunca derruba
+    // a operação, só reporta em `espelho` se o Supabase falhar.
+    SpreadsheetApp.flush();
+    var espelhoTarefa = _espelharLinha_(sh, p.aba, r);
+    return _json({ ok: true, row: r, aba: p.aba, espelho: espelhoTarefa });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// =====================================================================
+// ESPELHAMENTO SUPABASE (tempo real) — Fase F6. O app.html publicado NÃO lê
+// a planilha, lê public.clientes/public.atividades no Supabase (RLS por
+// cargo). Sem isto, o espelho só era atualizado por um cron 3x/dia — cliente
+// criado na planilha sumia por horas. Aqui a gente espelha na MESMA
+// requisição que gravou na planilha (set/nova_tarefa/instanciar) + um
+// acionador onEdit pra edição feita direto na planilha.
+//
+// Regra dura: a planilha é a fonte de verdade. Se o espelho falhar (chave
+// não configurada, Supabase fora do ar, RLS bloqueando o service role etc.),
+// a gravação na planilha NÃO é desfeita — só devolvemos o motivo no campo
+// `espelho` da resposta pro front avisar o usuário.
+//
+// Contrato de payload (igual ao paliativo automation/sync_central_supabase.py,
+// que já espelhava via psycopg2 direto — aqui é PostgREST):
+//   POST {SUPABASE_URL}/rest/v1/atividades?on_conflict=cliente_aba,row
+//     body: [{ cliente_aba, row, tempo, tipo, papel, pessoas[], ativ,
+//              prev, feito, cls, motivo, verif, ativo:true }, ...]
+//   POST {SUPABASE_URL}/rest/v1/clientes?on_conflict=aba
+//     body: [{ aba, nome, servico, cs, gt, assinatura, kickoff, aniversario,
+//              info, obs, ativo:true, atualizado_em }]
+//   headers: apikey / Authorization: Bearer <SUPABASE_SERVICE_KEY>,
+//            Prefer: resolution=merge-duplicates
+// Datas em 'AAAA-MM-DD' ou null. `cls` é a MESMA regra de classificação do
+// build_central.py (função classifica()), reimplementada 1:1 em
+// _classificaStatus_ abaixo — não inventar rótulo novo aqui.
+// =====================================================================
+
+// Igual a PESSOA_POR_PAPEL do build_central.py — usado só pra montar o
+// array `pessoas` do espelho (mesmos nomes que o front já espera). NÃO
+// confundir com AGENDA_POR_PAPEL (linha 70), que é outro mapeamento (CLI e
+// CRC caem ambos em "Clientes" lá, porque é só destino de agenda).
+var PESSOA_POR_PAPEL_ = { 'SÓC': 'Adão', 'WIL': 'William', 'PIE': 'Pietro', 'GT': 'Gestora', 'IA': 'Automação', 'CLI': 'Cliente', 'CRC': 'CRC da clínica' };
+
+/** Espelho 1:1 de classifica() em build_central.py — mesmos rótulos, mesma ordem de checagem. NÃO inventar rótulo novo aqui sem trocar os dois lugares. */
+function _classificaStatus_(textoStatus) {
+  var s = String(textoStatus || '');
+  if (s.indexOf('Feito') !== -1) return 'feito';
+  if (s.indexOf('ATRASO QW') !== -1) return 'atraso_qw';
+  if (s.indexOf('Atrasado') !== -1) return 'atrasado';
+  if (s.indexOf('HOJE') !== -1) return 'hoje';
+  if (s.indexOf('Pendente') !== -1) return 'pendente';
+  return 'sem_prazo';
+}
+
+/**
+ * Date do Sheets -> 'AAAA-MM-DD', ou null se a célula não é uma data (vazia/
+ * fórmula sem resultado). Aceita também STRING "dd/mm/aaaa" (achado médio
+ * 20/08: a coluna F é escrita como texto por doPost 'set' — ver fmtBRfull —
+ * e sem esta 2ª tentativa o espelho gravava feito:null enquanto a coluna G
+ * (fórmula) já dizia "✅ Feito", divergindo do build_central.py, que parseia
+ * o texto exibido). Reusa parseDataBR_ (linha ~437) — mesma regra em toda a
+ * planilha, não uma segunda implementação de parser de data BR.
+ */
+function _dataISO_(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, 'America/Sao_Paulo', 'yyyy-MM-dd');
+  if (typeof v === 'string' && v.trim()) {
+    var d = parseDataBR_(v);
+    if (d) return Utilities.formatDate(d, 'America/Sao_Paulo', 'yyyy-MM-dd');
+  }
+  return null;
+}
+
+/** "SÓC+CRC" -> ['Adão','CRC da clínica'], igual ao list comprehension do Python (PESSOA_POR_PAPEL.get(p, p)). */
+function _pessoasDoPapel_(papel) {
+  return String(papel || '').split('+')
+    .map(function (p) { return p.trim(); })
+    .filter(function (p) { return p; })
+    .map(function (p) { return PESSOA_POR_PAPEL_[p] || p; });
+}
+
+/** Monta o objeto de UMA atividade espelhada a partir de uma linha A..I já lida da planilha (getValues, 1 linha x 9 cols). */
+function _montaAtividadeEspelho_(aba, row, vals) {
+  return {
+    cliente_aba: aba,
+    row: row,
+    tempo: String(vals[0] || ''),
+    tipo: String(vals[1] || ''),
+    papel: String(vals[2] || ''),
+    pessoas: _pessoasDoPapel_(vals[2]),
+    ativ: String(vals[3] || ''),
+    prev: _dataISO_(vals[4]),
+    feito: _dataISO_(vals[5]),
+    cls: _classificaStatus_(vals[6]),
+    motivo: String(vals[7] || ''),
+    verif: String(vals[8] || ''),
+    ativo: true,
+  };
+}
+
+/** Linha de fase/cabeçalho (ex.: "FASE 01", "MÓDULO TRÁFEGO...", "QWS EXCLUSIVAS...") — nunca é atividade de verdade. */
+function _ehLinhaDeFase_(c0) {
+  return /^(FASE|MÓDULO|QWS )/i.test(String(c0 || '').trim());
+}
+
+function _cfgSupabase_(p) {
+  if (p.service_key) _props().setProperty('SUPABASE_SERVICE_KEY', String(p.service_key).trim());
+  return _json({ ok: true, salvo: true });
+}
+
+/**
+ * Upsert genérico no PostgREST. `linhas` é SEMPRE array (bulk mesmo pra 1
+ * item) — quem chama nunca deve fazer um POST por linha em loop.
+ * Nunca lança: qualquer falha (sem chave, rede, HTTP >=300) vira
+ * {ok:false, erro} pro chamador decidir o que reportar no campo `espelho`.
+ */
+function _supabaseUpsert_(tabela, onConflict, linhas) {
+  var key = _props().getProperty('SUPABASE_SERVICE_KEY');
+  if (!key) return { ok: false, erro: 'sem_chave' };
+  if (!linhas || !linhas.length) return { ok: true };
+  try {
+    // As chaves NOVAS do Supabase (sb_secret_/sb_publishable_) NÃO são JWT: se
+    // forem mandadas em "Authorization: Bearer", o PostgREST tenta decodificar
+    // como JWT, falha e devolve 401 mesmo com a chave certa (diagnosticado
+    // 20/08 — chave válida de 41 chars dando 401). Só a legada (eyJ...) vai
+    // nos dois headers.
+    var ehJwt = key.indexOf('eyJ') === 0;
+    var cab = { apikey: key, Prefer: 'resolution=merge-duplicates' };
+    if (ehJwt) cab.Authorization = 'Bearer ' + key;
+    var r = UrlFetchApp.fetch(
+      SUPABASE_URL + '/rest/v1/' + tabela + '?on_conflict=' + encodeURIComponent(onConflict),
+      {
+        method: 'post',
+        contentType: 'application/json',
+        headers: cab,
+        payload: JSON.stringify(linhas),
+        muteHttpExceptions: true,
+      }
+    );
+    var code = r.getResponseCode();
+    if (code >= 300) {
+      // corpo completo do PostgREST (pode conter nome de constraint/coluna/
+      // texto de policy RLS) só no log do Apps Script — achado leve 20/08:
+      // isso chegava inteiro ao navegador de qualquer usuário logado.
+      Logger.log('_supabaseUpsert_ falhou (' + tabela + '): HTTP ' + code + ' ' + r.getContentText().slice(0, 500));
+      return { ok: false, erro: 'falhou: HTTP ' + code };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, erro: 'falhou: ' + err };
+  }
+}
+
+/** Espelha UMA linha de atividade já gravada na planilha (releitura A..I, pega G recalculada). Devolve 'ok' | 'sem_chave' | 'falhou: <motivo>'. */
+function _espelharLinha_(sh, aba, row) {
+  try {
+    var vals = sh.getRange(row, 1, 1, 9).getValues()[0];
+    var res = _supabaseUpsert_('atividades', 'cliente_aba,row', [_montaAtividadeEspelho_(aba, row, vals)]);
+    return res.ok ? 'ok' : res.erro;
+  } catch (err) {
+    return 'falhou: ' + err;
+  }
+}
+
+/** Espelha a linha de cabeçalho do cliente (aba inteira -> 1 registro em public.clientes). */
+function _espelharCliente_(sh, aba, nome, servico) {
+  try {
+    var cliente = {
+      aba: aba,
+      nome: nome,
+      servico: servico,
+      cs: 'Adão', // CS_PADRAO do build_central.py — hoje sempre fixo
+      gt: (String(sh.getRange('H2').getValue() || '').trim()) || null,
+      assinatura: _dataISO_(sh.getRange('E1').getValue()),
+      kickoff: _dataISO_(sh.getRange('E2').getValue()),
+      aniversario: _dataISO_(sh.getRange('H1').getValue()),
+      info: String(sh.getRange('K1').getValue() || ''),
+      obs: String(sh.getRange('K2').getValue() || ''),
+      ativo: true,
+      atualizado_em: new Date().toISOString(),
+    };
+    var res = _supabaseUpsert_('clientes', 'aba', [cliente]);
+    return res.ok ? 'ok' : res.erro;
+  } catch (err) {
+    return 'falhou: ' + err;
+  }
+}
+
+/** Espelha TODAS as atividades de uma aba de cliente (linha 6 até o fim) num ÚNICO POST bulk — usado por 'instanciar' e pela âncora E1/E2 mudando de valor. */
+function _espelharAbaCompleta_(sh, aba) {
+  try {
+    var ultima = sh.getLastRow();
+    if (ultima < 6) return 'ok'; // aba sem nenhuma atividade ainda
+    var vals = sh.getRange(6, 1, ultima - 5, 9).getValues();
+    var itens = [];
+    for (var i = 0; i < vals.length; i++) {
+      if (!vals[i][0] || _ehLinhaDeFase_(vals[i][0])) continue; // cabeçalho de fase, não é atividade
+      itens.push(_montaAtividadeEspelho_(aba, 6 + i, vals[i]));
+    }
+    if (!itens.length) return 'ok';
+    var res = _supabaseUpsert_('atividades', 'cliente_aba,row', itens);
+    return res.ok ? 'ok' : res.erro;
+  } catch (err) {
+    return 'falhou: ' + err;
+  }
+}
+
+/**
+ * Acionador INSTALÁVEL (ver passo a passo no topo do arquivo) — reage a
+ * edição feita direto na planilha, fora do painel. Guardrails:
+ *  - só abas "Cliente – *";
+ *  - edição em massa (paste gigante) acima de 200 linhas: desiste, o cron
+ *    de 3x/dia resolve depois — não vira 200 chamadas HTTP;
+ *  - só espelha se a edição tocou uma coluna que importa (B,C,D,F,H,I) ou
+ *    uma das âncoras E1/E2 (aí a aba inteira muda de prazo, não só 1 linha);
+ *    ignora E/G nas linhas de atividade porque são fórmula (recalculam
+ *    sozinhas, não são a fonte do dado editado);
+ *  - LockService + no máximo 1 POST por chamada (linha única -> _espelharLinha_
+ *    style embutido aqui; range de várias linhas -> 1 POST bulk; âncora -> 1
+ *    POST bulk da aba inteira).
+ *
+ * LIMITAÇÃO CONHECIDA (achado leve 20/08, aceita por ora): onEdit não dispara
+ * em INSERT_ROW/REMOVE_ROW (isso é onChange, um acionador diferente). Apagar
+ * ou inserir linha no meio de uma aba desalinha `row` até o próximo cron. Não
+ * instalamos um 2º acionador (onChange) pra isto agora — é mais um passo
+ * manual de instalação (ver topo do arquivo) pra um caso raro (o fluxo normal
+ * nunca apaga/insere linha no meio; é sempre edição de célula). Reavaliar se
+ * virar reclamação real.
+ */
+function onEditCentral(e) {
+  try {
+    if (!e || !e.range) return;
+    var sh = e.range.getSheet();
+    var nomeAba = sh.getName();
+    if (nomeAba.indexOf(PREFIXO_ABA_CLIENTE) !== 0) return;
+
+    var linhaIni = e.range.getRow();
+    var numRows = e.range.getNumRows();
+    var colIni = e.range.getColumn();
+    var colFim = colIni + e.range.getNumColumns() - 1;
+    if (numRows > 200) return; // edição em massa fora de faixa — não tenta espelhar linha a linha
+
+    var tocaAncora = linhaIni <= 2 && (linhaIni + numRows - 1) >= 1 && colIni <= 5 && colFim >= 5;
+
+    var lock = LockService.getDocumentLock();
+    if (!lock.tryLock(10000)) return; // não trava a edição do usuário; só desiste do espelho desta vez (cron pega depois)
+    try {
+      SpreadsheetApp.flush(); // garante que a fórmula de status (G) já recalculou antes de reler
+
+      if (tocaAncora) {
+        _espelharAbaCompleta_(sh, nomeAba); // E1/E2 mudou: TODA a aba muda de prazo — 1 POST bulk
+        return;
+      }
+
+      // metadado do cabeçalho editado direto na planilha (H1:H3 aniv/GT/dev,
+      // K1:K2 info/obs) — achado médio 20/08: só a ação 'cel' do doPost
+      // espelhava isso; feito na planilha ficava preso até o cron.
+      var tocaMetadadoCliente = linhaIni <= 3 && (linhaIni + numRows - 1) >= 1 &&
+        ((colIni <= 8 && colFim >= 8) || (colIni <= 11 && colFim >= 11));
+      if (tocaMetadadoCliente) {
+        var nomeCli = String(sh.getRange('B1').getValue() || nomeAba.replace(PREFIXO_ABA_CLIENTE, ''));
+        var servicoCli = String(sh.getRange('B2').getValue() || '');
+        _espelharCliente_(sh, nomeAba, nomeCli, servicoCli);
+        return;
+      }
+
+      var linhaFim = linhaIni + numRows - 1;
+      if (linhaFim < 6) return; // edição só no cabeçalho fora de E1/E2 — nada a espelhar
+
+      var COLS_IMPORTAM = { 2: 1, 3: 1, 4: 1, 6: 1, 8: 1, 9: 1 }; // B,C,D,F,H,I
+      var importa = false;
+      for (var c = colIni; c <= colFim; c++) { if (COLS_IMPORTAM[c]) { importa = true; break; } }
+      if (!importa) return; // só tocou E e/ou G (fórmula) — ignora
+
+      var de = Math.max(6, linhaIni);
+      var vals = sh.getRange(de, 1, linhaFim - de + 1, 9).getValues();
+      var itens = [];
+      for (var i = 0; i < vals.length; i++) {
+        if (!vals[i][0] || _ehLinhaDeFase_(vals[i][0])) continue;
+        itens.push(_montaAtividadeEspelho_(nomeAba, de + i, vals[i]));
+      }
+      if (!itens.length) return;
+      _supabaseUpsert_('atividades', 'cliente_aba,row', itens); // 1 POST bulk, best-effort
+    } finally {
+      lock.releaseLock();
+    }
+  } catch (err) {
+    // onEdit nunca pode quebrar a experiência de edição do usuário na planilha
+  }
+}
+
+function doGet(e) {
+  return _json({ ok: true, servico: 'central-hawki', hora: new Date().toISOString() });
+}
+
+function doPost(e) {
+  try {
+    var p = JSON.parse(e.postData.contents || '{}');
+    if (p.k !== API_TOKEN) return _json({ ok: false, erro: 'token inválido' });
+
+    var sbCheck = _validaSb_(p);
+    if (!sbCheck.ok) return _json({ ok: false, erro: 'acesso negado: ' + sbCheck.erro });
+
+    // ---- ações que NÃO são de aba de cliente: só admin (config global,
+    // token do ClickUp, importação em massa) — um 'cs' aprovado não pode
+    // mexer nisso, a UI só escondia o botão, a API não conferia nada. ----
+    // criar cliente pela API (mesma regra do menu: só admin). Sem aba prévia,
+    // então entra ANTES da checagem de p.aba.
+    if (p.acao === 'instanciar') {
+      if (sbCheck.cargo !== 'admin') return _json({ ok: false, erro: 'acesso negado: ação restrita a admin' });
+      return _instanciarViaApi_(p);
+    }
+
+    if (p.acao === 'cfg_supabase') {
+      // exige login REAL de admin (sb_token) — o segredo k_local do modo
+      // local (hawki_central.html, que viaja pro Drive) NÃO basta aqui,
+      // porque esta ação sobrescreve a SUPABASE_SERVICE_KEY em silêncio
+      // (achado leve 20/08: quem tivesse o arquivo local podia derrubar o
+      // espelho de todo mundo sem deixar rastro de leitura da chave).
+      if (!p.sb_token) return _json({ ok: false, erro: 'acesso negado: cfg_supabase exige login de admin (k_local não é aceito nesta ação)' });
+      if (sbCheck.cargo !== 'admin') return _json({ ok: false, erro: 'acesso negado: ação restrita a admin' });
+      return _cfgSupabase_(p);
+    }
+
+    if (p.acao === 'cfg_clickup' || p.acao === 'clickup_preview' ||
+        p.acao === 'clickup_importar' || p.acao === 'clickup_equipe') {
+      if (sbCheck.cargo !== 'admin') return _json({ ok: false, erro: 'acesso negado: ação restrita a admin' });
+      if (p.acao === 'cfg_clickup') return _cfgClickUp(p);
+      if (p.acao === 'clickup_preview') return _clickupPreview();
+      if (p.acao === 'clickup_importar') return _clickupImportar(p);
+      if (p.acao === 'clickup_equipe') return _clickupEquipe();
+    }
+
+    if (!p.aba || String(p.aba).indexOf(PREFIXO_ABA_CLIENTE) !== 0) {
+      return _json({ ok: false, erro: 'aba inválida (só abas Cliente – *)' });
+    }
+    var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(p.aba);
+    if (!sh) return _json({ ok: false, erro: 'aba não encontrada: ' + p.aba });
+
+    if (p.acao === 'set') {
+      // edits: [[coluna, valor], ...] numa linha de atividade (>= 6)
+      var row = Number(p.row);
+      if (!row || row < 6) return _json({ ok: false, erro: 'linha inválida' });
+      // não-admin (cs via app.html): a permissão de escrita tem que herdar
+      // exatamente a de leitura (RLS). Reconsulta o Supabase com o JWT do
+      // próprio usuário — só grava se a linha voltar (RLS deixou ver).
+      if (sbCheck.cargo !== 'admin') {
+        if (!_linhaVisivelParaEscrita_(p.aba, row, p.sb_token)) {
+          return _json({ ok: false, erro: 'acesso negado: esta atividade não é do seu escopo' });
+        }
+      }
+      // Admin edita tudo (menos E/G, fórmulas). Não-admin (cs) só marca
+      // execução: F data de feito, H motivo, I nota — NUNCA B/C/D, porque a
+      // coluna C (Papel) define o escopo de RLS no espelho Supabase e um cs
+      // não pode reetiquetar a própria visibilidade (achado Codex 17/08).
+      // Exceção: numa linha "avulsa" (tarefa criada no painel, coluna A ===
+      // 'avulsa'), a coluna E não é fórmula de âncora — é um VALOR de data
+      // digitado na criação, então liberamos E pra edição (achado médio
+      // 20/08: prazo de tarefa avulsa era imperdoavelmente imutável).
+      var ehAvulsa = String(sh.getRange(row, 1).getValue() || '').trim() === 'avulsa';
+      var COLS_OK = sbCheck.cargo === 'admin'
+        ? (ehAvulsa ? { B: 1, C: 1, D: 1, E: 1, F: 1, H: 1, I: 1 } : { B: 1, C: 1, D: 1, F: 1, H: 1, I: 1 })
+        : (ehAvulsa ? { E: 1, F: 1, H: 1, I: 1 } : { F: 1, H: 1, I: 1 });
+      for (var i = 0; i < (p.edits || []).length; i++) {
+        var col = String(p.edits[i][0]).toUpperCase();
+        if (!COLS_OK[col]) continue;
+        var val = p.edits[i][1];
+        if (col === 'E') {
+          // só data BR válida ou vazio (limpa o prazo) — nunca fórmula/texto
+          // livre; G já é fórmula que lê E ao vivo, recalcula sozinho.
+          if (val !== '' && !/^\d{2}\/\d{2}\/\d{4}$/.test(String(val))) continue;
+          sh.getRange(row, 5).setNumberFormat('dd/mm/yyyy').setValue(val);
+          continue;
+        }
+        if (col === 'F') {
+          // mesma régua da coluna E (achado médio 20/08): força Date real,
+          // nunca deixa a data de feito ficar como string solta — _dataISO_
+          // do espelho já ganhou um fallback de string, mas é defesa dupla
+          // melhor que a célula nem virar texto.
+          if (val !== '' && !/^\d{2}\/\d{2}\/\d{4}$/.test(String(val))) continue;
+          sh.getRange(row, 6).setNumberFormat('dd/mm/yyyy').setValue(val);
+          continue;
+        }
+        sh.getRange(col + row).setValue(val);
+      }
+      // espelha a linha inteira (releitura A..I) pra pegar o status
+      // recalculado pela fórmula da coluna G e a data já formatada — nunca
+      // derruba a operação: a planilha já gravou, o front só é avisado via
+      // `espelho` se o Supabase falhar.
+      SpreadsheetApp.flush();
+      var espelhoSet = _espelharLinha_(sh, p.aba, row);
+      return _json({ ok: true, espelho: espelhoSet });
+    }
+    if (p.acao === 'nova_tarefa') {
+      return _novaTarefa_(p, sh, sbCheck);
+    }
+    if (p.acao === 'cel') {
+      // célula de metadado do cabeçalho: H1-H3 (aniv/GT/dev), K1-K2 (info/obs)
+      if (sbCheck.cargo !== 'admin') return _json({ ok: false, erro: 'acesso negado: ação restrita a admin' });
+      var CEL_OK = { H1: 1, H2: 1, H3: 1, K1: 1, K2: 1 };
+      var cel = String(p.cel).toUpperCase();
+      if (!CEL_OK[cel]) return _json({ ok: false, erro: 'célula não permitida: ' + cel });
+      sh.getRange(cel).setValue(p.valor || '');
+      // espelho imediato (achado médio 20/08): H1-H3/K1-K2 são exatamente os
+      // campos que o painel destaca (obs aparece acima das abas do cliente)
+      // e não tinham NENHUM espelho — o front recebia espelho:undefined,
+      // caía no ramo "senão" e mostrava o toast verde de sucesso mesmo sem
+      // o painel dos outros ver a mudança até o cron.
+      SpreadsheetApp.flush();
+      var nomeCli = String(sh.getRange('B1').getValue() || String(p.aba).replace(PREFIXO_ABA_CLIENTE, ''));
+      var servicoCli = String(sh.getRange('B2').getValue() || '');
+      var espelhoCel = _espelharCliente_(sh, p.aba, nomeCli, servicoCli);
+      return _json({ ok: true, espelho: espelhoCel });
+    }
+    return _json({ ok: false, erro: 'ação desconhecida' });
+  } catch (err) {
+    return _json({ ok: false, erro: String(err) });
+  }
+}
+
+function _json(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// =====================================================================
+// SINCRONIZAÇÃO CLICKUP (conta específica da Hawki — token próprio)
+// ---------------------------------------------------------------------
+// SOMENTE LEITURA do ClickUp (nenhum POST/PUT/DELETE pra lá — guardrail da
+// casa). O sync lê a lista de Onboardings e escreve NA PLANILHA.
+// Token pk_ + list ID ficam em Script Properties (fora do código e do git);
+// o Pietro cola os dois na tela Configurações do painel, uma vez.
+// Campos lidos por NOME (não por ID): "Data de início", "Tipo de serviço".
+// =====================================================================
+function _props() { return PropertiesService.getScriptProperties(); }
+
+function _cfgClickUp(p) {
+  if (p.token) _props().setProperty('CLICKUP_TOKEN', String(p.token).trim());
+  if (p.list) _props().setProperty('CLICKUP_LIST', String(p.list).trim());
+  var temToken = !!_props().getProperty('CLICKUP_TOKEN');
+  var temList = !!_props().getProperty('CLICKUP_LIST');
+  return _json({ ok: true, token_salvo: temToken, list_salva: temList });
+}
+
+function _clickupGet(path) {
+  var token = _props().getProperty('CLICKUP_TOKEN');
+  if (!token) throw new Error('token ClickUp não configurado (tela Configurações do painel)');
+  var r = UrlFetchApp.fetch('https://api.clickup.com/api/v2' + path, {
+    headers: { Authorization: token }, muteHttpExceptions: true,
+  });
+  if (r.getResponseCode() >= 300) throw new Error('ClickUp HTTP ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 180));
+  return JSON.parse(r.getContentText());
+}
+
+function _clickupCandidatos() {
+  var list = _props().getProperty('CLICKUP_LIST');
+  if (!list) throw new Error('list ID não configurado (tela Configurações do painel)');
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var tasks = _clickupGet('/list/' + list + '/task?include_closed=false').tasks || [];
+  return tasks.filter(function (t) {
+    return !/\[TEMPLATE\]/i.test(t.name);
+  }).map(function (t) {
+    var nome = t.name.replace(/^Onboarding\s*[–-]\s*/i, '').trim();
+    var inicio = null, tipos = [], aniversario = null;
+    (t.custom_fields || []).forEach(function (f) {
+      var fn = (f.name || '').toLowerCase();
+      if (fn.indexOf('data de início') === 0 || fn.indexOf('data de inicio') === 0) {
+        if (f.value) inicio = new Date(Number(f.value));
+      }
+      if (fn.indexOf('tipo de serviço') === 0 || fn.indexOf('tipo de servico') === 0) {
+        var opts = (f.type_config && f.type_config.options) || [];
+        (f.value || []).forEach(function (vid) {
+          opts.forEach(function (o) { if (o.id === vid) tipos.push(o.label || o.name || ''); });
+        });
+      }
+      if (fn.indexOf('aniversário') === 0 || fn.indexOf('aniversario') === 0) {
+        if (f.value) aniversario = new Date(Number(f.value));
+      }
+    });
+    var temTrafego = tipos.some(function (x) { return /tráfego|trafego/i.test(x); });
+    var temIA = tipos.some(function (x) { return /ia|sofia/i.test(x); });
+    var tipoNum = temTrafego && temIA ? 3 : temTrafego ? 2 : 1;
+    return {
+      task_id: t.id, nome: nome, status: (t.status && t.status.status) || '',
+      tipo: tipoNum, tipo_label: tipoNum === 3 ? 'COMBO' : tipoNum === 2 ? 'Tráfego' : 'Sofia',
+      inicio: inicio ? Utilities.formatDate(inicio, 'America/Sao_Paulo', 'dd/MM/yyyy') : '',
+      aniversario: aniversario ? Utilities.formatDate(aniversario, 'America/Sao_Paulo', 'dd/MM/yyyy') : '',
+      ja_existe: !!ss.getSheetByName(PREFIXO_ABA_CLIENTE + nome),
+    };
+  });
+}
+
+function _clickupPreview() {
+  try { return _json({ ok: true, candidatos: _clickupCandidatos() }); }
+  catch (err) { return _json({ ok: false, erro: String(err) }); }
+}
+
+function _clickupImportar(p) {
+  // instancia SÓ os nomes pedidos, e SÓ se ainda não existirem (não duplica)
+  try {
+    var pedidos = p.nomes || [];
+    var cands = _clickupCandidatos();
+    var criados = [], pulados = [];
+    cands.forEach(function (c) {
+      if (pedidos.indexOf(c.nome) === -1) return;
+      if (c.ja_existe) { pulados.push(c.nome + ' (já existe)'); return; }
+      if (!c.inicio) { pulados.push(c.nome + ' (sem Data de início no ClickUp)'); return; }
+      var r = _instanciarCore(c.nome, c.tipo, parseDataBR_(c.inicio), null);
+      if (r.ok) {
+        var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PREFIXO_ABA_CLIENTE + c.nome);
+        if (sh && c.aniversario) { sh.getRange('G1').setValue('Aniversário Dr.:'); sh.getRange('H1').setValue(c.aniversario); }
+        // espelho imediato — achado médio 20/08: este era o caminho REAL de
+        // criação de cliente que mais faltava espelhar (o menu do Sheets já
+        // espelha; a importação do ClickUp não espelhava nada e reproduzia
+        // o bug original "criei e não apareceu" até o cron de 3x/dia).
+        var espCliente = 'falhou: aba não encontrada após criação', espAtividades = espCliente;
+        if (sh) {
+          SpreadsheetApp.flush();
+          espCliente = _espelharCliente_(sh, r.aba, c.nome, r.servico);
+          espAtividades = _espelharAbaCompleta_(sh, r.aba);
+        }
+        criados.push(c.nome + ((espCliente === 'ok' && espAtividades === 'ok') ? '' : ' [espelho: cliente=' + espCliente + '; atividades=' + espAtividades + ']'));
+      } else pulados.push(c.nome + ' (' + r.erro + ')');
+    });
+    return _json({ ok: true, criados: criados, pulados: pulados });
+  } catch (err) { return _json({ ok: false, erro: String(err) }); }
+}
+
+function _clickupEquipe() {
+  // atualiza metadados (H1 aniversário) dos clientes que JÁ têm aba — nunca
+  // toca em atividades/datas de feito
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var atualizados = [];
+    _clickupCandidatos().forEach(function (c) {
+      if (!c.ja_existe) return;
+      var sh = ss.getSheetByName(PREFIXO_ABA_CLIENTE + c.nome);
+      if (!sh || !c.aniversario) return;
+      sh.getRange('G1').setValue('Aniversário Dr.:');
+      sh.getRange('H1').setValue(c.aniversario);
+      // espelho imediato (achado médio 20/08) — este caminho só mexia em H1
+      // e nunca avisava o Supabase; o painel publicado ficava com o
+      // aniversário velho até o cron.
+      SpreadsheetApp.flush();
+      var nomeCli = String(sh.getRange('B1').getValue() || c.nome);
+      var servicoCli = String(sh.getRange('B2').getValue() || '');
+      var espCliente = _espelharCliente_(sh, PREFIXO_ABA_CLIENTE + c.nome, nomeCli, servicoCli);
+      atualizados.push(c.nome + (espCliente === 'ok' ? '' : ' [espelho: ' + espCliente + ']'));
+    });
+    return _json({ ok: true, atualizados: atualizados });
+  } catch (err) { return _json({ ok: false, erro: String(err) }); }
+}
+
+// Core de instanciação sem UI (usado pelo sync ClickUp; espelho fiel do
+// fluxo interativo instanciarClienteNovo — mesmas funções internas).
+function _instanciarCore(nome, tipo, dataAssinatura, dataKickoff) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  nome = String(nome || '').trim();
+  if (!nome || nome.length > 90 || /[\[\]\*\?\/\\:]/.test(nome)) return { ok: false, erro: 'nome inválido' };
+  if (!dataAssinatura) return { ok: false, erro: 'data de assinatura inválida' };
+  var nomeAba = PREFIXO_ABA_CLIENTE + nome;
+  if (ss.getSheetByName(nomeAba)) return { ok: false, erro: 'aba já existe' };
+
+  var servicoLabel, linhas;
+  if (tipo === 1) { servicoLabel = 'Sofia (IA only)'; linhas = lerModelo_(NOME_ABA_MODELO_SOFIA); }
+  else if (tipo === 2) { servicoLabel = 'Tráfego'; linhas = converterTrafegoParaD_(lerModelo_(NOME_ABA_MODELO_TRAFEGO)); }
+  else { servicoLabel = 'COMBO (Tráfego + Sofia)'; linhas = montarLinhasCombo_(lerModelo_(NOME_ABA_MODELO_SOFIA)); }
+  if (!linhas || !linhas.length) return { ok: false, erro: 'modelo vazio' };
+
+  var rows = montarAba_(servicoLabel, dataAssinatura, dataKickoff, linhas, nome);
+  var sheet = ss.insertSheet(nomeAba);
+  sheet.getRange(1, 1, rows.length, 9).setValues(rows);
+  sheet.setFrozenRows(5);
+  sheet.getRange(5, 1, 1, 9).setFontWeight('bold');
+  sheet.setColumnWidth(4, LARGURA_COL_ATIVIDADE);
+  for (var c = 5; c <= 9; c++) sheet.setColumnWidth(c, LARGURA_COL_PADRAO_DIREITA);
+  var regSheet = ss.getSheetByName(NOME_ABA_REGISTRO);
+  if (regSheet) regSheet.appendRow([nome, dataAssinatura, dataKickoff || '', 'nenhum', '', 'importado do ClickUp', 'SÓC', '']);
+  return { ok: true, aba: nomeAba, servico: servicoLabel };
+}
+
+/** Cria cliente via API: valida nome/tipo/datas e delega pro _instanciarCore. Admin-only (checado no doPost). */
+function _instanciarViaApi_(p) {
+  var nome = String(p.nome == null ? "" : p.nome).trim();
+  if (!nome) return _json({ ok: false, erro: "nome é obrigatório" });
+  if (nome.length > 90) return _json({ ok: false, erro: "nome muito longo (máx 90)" });
+  if (/[\[\]\*\?\/\:]/.test(nome)) return _json({ ok: false, erro: "nome tem caractere proibido em aba" });
+  if (/^[=+\-@]/.test(nome)) return _json({ ok: false, erro: "nome não pode começar com = + - @" });
+  var tipo = Number(p.tipo);
+  if ([1, 2, 3].indexOf(tipo) === -1) return _json({ ok: false, erro: "tipo inválido (1=Sofia, 2=Tráfego, 3=Combo)" });
+  var ass = _parsePrazoISO_(p.assinatura);
+  if (!ass.ok || !ass.data) return _json({ ok: false, erro: "assinatura inválida (use AAAA-MM-DD)" });
+  var kick = _parsePrazoISO_(p.kickoff);
+  if (!kick.ok) return _json({ ok: false, erro: "kickoff inválido (use AAAA-MM-DD ou vazio)" });
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(20000)) return _json({ ok: false, erro: "planilha ocupada, tente de novo" });
+  try {
+    var r = _instanciarCore(nome, tipo, ass.data, kick.data || null);
+    if (!r.ok) return _json({ ok: false, erro: r.erro });
+
+    // espelho imediato: cliente + TODAS as atividades da aba nova, num único
+    // POST bulk pra atividades (não uma requisição por linha) — é exatamente
+    // o caso do "criei cliente e não apareceu" que o dono reclamou.
+    var shNovo = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(r.aba);
+    SpreadsheetApp.flush();
+    var espCliente = shNovo ? _espelharCliente_(shNovo, r.aba, nome, r.servico) : 'falhou: aba não encontrada após criação';
+    var espAtividades = shNovo ? _espelharAbaCompleta_(shNovo, r.aba) : 'falhou: aba não encontrada após criação';
+    var espelho = (espCliente === 'ok' && espAtividades === 'ok') ? 'ok'
+      : (espCliente === 'sem_chave' && espAtividades === 'sem_chave') ? 'sem_chave'
+      : 'falhou: cliente=' + espCliente + '; atividades=' + espAtividades;
+
+    return _json({ ok: true, aba: r.aba, espelho: espelho });
+  } catch (e) {
+    return _json({ ok: false, erro: String(e) });
+  } finally {
+    lock.releaseLock();
+  }
+}
