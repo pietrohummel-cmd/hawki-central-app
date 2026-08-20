@@ -20,6 +20,7 @@
   --text:#e8ecf3; --muted:#8b93a3; --faint:#5d6575;
   --laranja:#ff8c42; --laranja2:#f0883e; --vermelho:#f85149; --amarelo:#e3b341;
   --verde:#3fb950; --azul:#58a6ff; --rosa:#ec6547; --roxo:#bc8cff;
+  --wil:#ec4899; /* William (CS) — antes era var(--laranja2), quase idêntico a SÓC/Adão (achado leve 20/08) */
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,'Segoe UI',Roboto,sans-serif}
@@ -213,6 +214,8 @@ th{color:var(--faint);font-weight:600;font-size:10px;letter-spacing:.08em;text-t
 .fitem .tit small{display:block;color:var(--faint);font-size:11px}
 .fitem.done .tit{color:var(--muted);text-decoration:line-through}
 .fitem .fx{margin-left:auto;display:flex;gap:6px;align-items:center;flex-shrink:0}
+.fitem.realce-novo{animation:realceNovo 1.3s ease-out 2}
+@keyframes realceNovo{0%{background:rgba(255,140,66,.28)}100%{background:transparent}}
 /* kanban */
 .kb{display:grid;grid-template-columns:repeat(4,minmax(210px,1fr));gap:10px;overflow-x:auto}
 .kbcol{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px;min-width:210px}
@@ -331,6 +334,7 @@ html.modo-treino .topbar{top:40px}
           <option value="feito">Concluído</option>
           <option value="cliente">Aguardando cliente</option>
         </select>
+        <button class="btn sec" id="nova-tarefa-btn">+ Nova tarefa</button>
         <button class="btn" id="novo">+ Novo cliente</button>
       </div>
     </div>
@@ -357,6 +361,22 @@ html.modo-treino .topbar{top:40px}
   <div class="mfoot"><button class="btn sec" onclick="fecha('ov-novo')">Cancelar</button><button class="btn" onclick="criarCliente()">Criar cliente</button></div>
 </div></div>
 
+<!-- modal nova tarefa -->
+<div class="overlay" id="ov-tarefa"><div class="modal">
+  <span class="fecha" onclick="fecha('ov-tarefa')">✕</span>
+  <h2>Nova tarefa</h2><div class="sub">Cria e designa uma tarefa avulsa dentro de um cliente</div>
+  <div class="mgrid">
+    <div class="mfull"><label>Cliente</label><select id="nt-cliente"></select></div>
+    <div class="mfull"><label>O que fazer</label><input id="nt-ativ" placeholder="Ex: Confirmar agenda do kickoff com o cliente" maxlength="200"></div>
+    <div><label>Responsável</label><select id="nt-resp"></select></div>
+    <div><label>Prazo (opcional)</label><input id="nt-prazo" type="date"></div>
+    <div class="mfull" style="display:flex;align-items:center;gap:8px"><input id="nt-qw" type="checkbox" style="width:auto"><label style="margin:0;text-transform:none;font-size:13px;color:var(--text);letter-spacing:0">É uma Quick Win (★)</label></div>
+    <div class="mfull"><label>Como verificar (opcional)</label><input id="nt-verif" placeholder="Ex: print do WhatsApp confirmando" maxlength="200"></div>
+  </div>
+  <div id="nt-erro" class="mnote" style="color:var(--vermelho);margin-top:8px"></div>
+  <div class="mfoot"><button class="btn sec" onclick="fecha('ov-tarefa')">Cancelar</button><button class="btn" id="nt-salvar" onclick="criarTarefa()">Criar tarefa</button></div>
+</div></div>
+
 <!-- modal atividade -->
 <div class="overlay" id="ov-atv"><div class="modal" id="atv-corpo"></div></div>
 
@@ -373,6 +393,16 @@ let D = null;
 // modo treino (sandbox): D_REAL guarda o dado de verdade enquanto D vira o
 // fictício; nenhuma das duas variáveis é persistida em localStorage.
 let MODO_TREINO = false, D_REAL = null, F_TREINO_BACK = null;
+// contador só do treino: rows negativos garantem que nunca colidem com rows
+// reais (linhas de planilha, sempre >=6) nem com os rows fictícios fixos
+// (101..209) do dataset de treino — usado pra dar um "row" único a tarefas
+// avulsas criadas durante o treino, sem tocar em nada externo.
+let TREINO_ROW_SEQ = -1;
+// ULTIMA_TAREFA: setado por criarTarefa() com {aba,row} da tarefa recém-
+// criada — consumido uma única vez em renderCliente (força o accordion
+// aberto + scroll/realce) e limpo em seguida (achado médio 20/08: bloco
+// MÓDULO EXTRA nascia sempre fechado no rodapé, sem scroll nem destaque).
+let ULTIMA_TAREFA = null;
 function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 const HOJE = new Date((D? D.hoje : todayISO())+'T12:00:00');
 function aplicaCabecalho(){
@@ -385,6 +415,16 @@ const MES = ['jan.','fev.','mar.','abr.','mai.','jun.','jul.','ago.','set.','out
 const MESL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const DIAS = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
 const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// ---- pessoas atribuíveis (movido pra cá, ANTES de montaFiltros() ser
+// chamado na linha ~693: montaFiltros roda de imediato no modo local, e uma
+// const declarada mais abaixo no arquivo estouraria "acesso antes da
+// inicialização" — TDZ do JS) ----
+const SIGLA_POR_PESSOA={'Adão':'SÓC','William':'WIL','Pietro':'PIE','Gestora':'GT','Automação':'IA','Cliente':'CLI','CRC da clínica':'CRC'};
+const PAPEL_NOME={'SÓC':'Sucesso do Cliente','WIL':'William (CS)','PIE':'Pietro (exceção)','GT':'Gestor de Tráfego','IA':'Automação','CLI':'Cliente','CRC':'CRC da clínica'};
+// 'WIL' foi incluído na policy 'cargo_ve_papel' do Supabase em 20/08 (as duas
+// sobrecargas, texto e array — ver central/rls.sql), então tarefa designada a
+// William é visível pro cargo cs e ele consegue marcar feito. Lista liberada.
+const PESSOAS_ATRIBUIVEIS = Object.keys(SIGLA_POR_PESSOA);
 const dt = iso => iso? new Date(iso+'T12:00:00') : null;
 const fmtCurto = d => d? `${d.getDate()} de ${MES[d.getMonth()]}` : '—';
 const fmtLongo = d => d? `${d.getDate()} de ${MESL[d.getMonth()].toLowerCase()} de ${d.getFullYear()}` : '—';
@@ -443,7 +483,10 @@ function montaSel(id, opts, atual, cb){
 }
 function montaFiltros(){
   if(!D) return;
-  montaSel('f-cs', [['all','Todos os CS'],...D.cs_lista.map(x=>[x,x]),['Pietro','Pietro'],['Gestora','Gestora'],['Automação','Automação']], F.cs, v=>F.cs=v);
+  // Lista de pessoas (não mais cs_lista + 3 nomes fixos, que nunca incluía
+  // William nem qualquer pessoa nova — achado médio 20/08): todo mundo que
+  // pode ser responsável já está em SIGLA_POR_PESSOA.
+  montaSel('f-cs', [['all','Todos os responsáveis'],...Object.keys(SIGLA_POR_PESSOA).map(p=>[p,p])], F.cs, v=>F.cs=v);
   montaSel('f-cliente', [['all','Todos os clientes'],...D.clientes.map(c=>[c.nome,c.nome])], F.cliente, v=>F.cliente=v);
   document.getElementById('f-status').value=F.status;
   document.getElementById('f-status').onchange=e=>{F.status=e.target.value;salvaF();render();};
@@ -542,11 +585,13 @@ async function gasSave(payload, btn){
     // porta única de escrita, em treino: NUNCA chama a API real. Quem
     // aplica a mudança é o próprio código chamador (já mexe no objeto D
     // em memória e re-renderiza antes/depois deste retorno) — aqui só
-    // simulamos o "salvou" visual e devolvemos sucesso.
+    // simulamos o "salvou" visual e devolvemos sucesso. Devolve um objeto
+    // (não só `true`) pra chamadores que precisam do row/aba de volta
+    // (ex.: nova_tarefa) também funcionarem em treino.
     const old=btn? btn.textContent:''; if(btn){btn.textContent='Salvando…';btn.disabled=true;}
     await new Promise(r=>setTimeout(r,350));
     if(btn){btn.textContent='✓ Salvo (treino)';setTimeout(()=>{btn.textContent=old;btn.disabled=false;},1200);}
-    return true;
+    return {ok:true, row:TREINO_ROW_SEQ--, aba:payload.aba};
   }
   const url=API();
   if(!url){ alert('Escrita ainda não configurada.\n\nSetup de 2 min (uma vez): abrir Configurações no menu e seguir os 3 passos do web app.'); return false; }
@@ -559,7 +604,7 @@ async function gasSave(payload, btn){
     const j=await r.json();
     if(!j.ok) throw new Error(j.erro||'falha');
     if(btn){btn.textContent='✓ Salvo';setTimeout(()=>{btn.textContent=old;btn.disabled=false;},1200);}
-    return true;
+    return j; // {ok:true, ...} — chamadores que só precisam de sucesso continuam usando isto como truthy
   }catch(e){
     if(btn){btn.textContent=old;btn.disabled=false;}
     alert('Não salvou: '+e.message+'\nConfira a URL da API em Configurações.');
@@ -710,9 +755,12 @@ function aplicaPerfilTopo(){
 function aplicaVisibilidadeCargo(){
   if(!MODO_APP || !PERFIL) return;
   const admin = PERFIL.cargo==='admin';
+  const podeCriarTarefa = admin || PERFIL.cargo==='cs'; // mesma régua de quem já marca feito (admin OU cs; nunca gt/automacao)
   const respNav=document.querySelector('.nitem[data-v="responsaveis"]'); if(respNav) respNav.style.display = admin? '':'none';
   const usNav=document.getElementById('nav-usuarios'); if(usNav) usNav.style.display = admin? '':'none';
   const novoBtn=document.getElementById('novo'); if(novoBtn) novoBtn.style.display = admin? '':'none';
+  const novaTarefaBtn=document.getElementById('nova-tarefa-btn'); if(novaTarefaBtn) novaTarefaBtn.style.display = podeCriarTarefa? '':'none';
+  document.querySelectorAll('.cli-nova-tarefa').forEach(b=>b.style.display = podeCriarTarefa? '':'none');
 }
 function iniciarApp(){
   telaBoot(`<div class="authcard" style="text-align:center"><b>Carregando…</b></div>`);
@@ -832,6 +880,7 @@ const TOUR_STEPS = [
   {titulo:'REGRA DE OURO: Data de feito', texto:'Esta é a regra mais importante do sistema: preencher a Data de feito é o que faz TUDO calcular — status, atraso, celebração. Clique numa atividade, abra o popup e, quando concluir de verdade, preencha essa data. Se atrasou, registre o motivo em "Motivo do atraso" — nunca deixe em branco.', sel:'.fasebox', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='etapas'; render(); }},
   {titulo:'Kanban — arraste pra Concluído', texto:'Prefere arrastar a clicar? Puxe um card até a coluna "Concluído" pra marcar feito na hora (e de volta pra desfazer). É o mesmo efeito de preencher a Data de feito.', sel:'.kb', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='kanban'; render(); }},
   {titulo:'Lista completa', texto:'Clique na aba "Lista" pra ver todas as atividades do cliente numa tabela só, com prazo, feito e status lado a lado — boa pra revisar tudo de uma vez.', sel:'.abas', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='lista'; render(); }},
+  {titulo:'+ Nova tarefa', texto:'Precisa lançar algo que não estava no modelo — um pedido pontual, um lembrete pro time? Clique em "+ Nova tarefa" aqui dentro do cliente: escreva o que fazer, escolha quem faz e (se tiver) o prazo. Ela entra no bloco "MÓDULO EXTRA", no fim das etapas.', sel:'.cli-nova-tarefa', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='etapas'; render(); }},
   {titulo:'Informações do cliente', texto:'Escreva o contexto do cliente aqui (histórico, preferências, contatos) e clique em "Salvar informações" — é assim que o time todo fica com o mesmo contexto, sem precisar perguntar de novo.', sel:'#cli-info', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='informacoes'; render(); }},
   {titulo:'Histórico', texto:'A aba Histórico guarda o rastro do que já foi feito neste cliente. Por ora, o histórico completo mora no versionamento da própria planilha (Arquivo › Histórico de versões).', sel:'#hist-box', antes:()=>{ if(!CLI && D.clientes[0]) CLI=D.clientes[0].aba; ABA_CLI='historico'; render(); }},
   // --- quick wins / celebrações ---
@@ -993,7 +1042,7 @@ function dadosTreino(){
 }
 function treinoEntrar(){
   if(MODO_TREINO) return;
-  fecha('ov-novo'); fecha('ov-atv');
+  fecha('ov-novo'); fecha('ov-atv'); fecha('ov-tarefa');
   D_REAL=D; F_TREINO_BACK={...F};
   D=dadosTreino();
   F.cs='all'; F.cliente='all'; F.periodo='all'; F.status='all'; F.de=''; F.ate='';
@@ -1004,7 +1053,7 @@ function treinoEntrar(){
 }
 function treinoSair(){
   if(!MODO_TREINO) return;
-  fecha('ov-novo'); fecha('ov-atv');
+  fecha('ov-novo'); fecha('ov-atv'); fecha('ov-tarefa');
   D=D_REAL; D_REAL=null;
   if(F_TREINO_BACK) Object.assign(F,F_TREINO_BACK);
   F_TREINO_BACK=null;
@@ -1020,6 +1069,7 @@ if(treinoSairBtn) treinoSairBtn.onclick = treinoSair;
 function abre(id){document.getElementById(id).classList.add('on');}
 function fecha(id){document.getElementById(id).classList.remove('on');}
 document.getElementById('novo').onclick=()=>abre('ov-novo');
+document.getElementById('nova-tarefa-btn').onclick=()=>abreNovaTarefa(CLI||null);
 function criarCliente(){
   if(treinoBloqueia('Criar cliente')) return;
   const v=id=>document.getElementById(id).value.trim();
@@ -1031,8 +1081,82 @@ function criarCliente(){
 }
 
 // ---- popup de atividade (form fiel ao print; Salvar grava via API) ----
-const SIGLA_POR_PESSOA={'Adão':'SÓC','Pietro':'PIE','Gestora':'GT','Automação':'IA','Cliente':'CLI','CRC da clínica':'CRC'};
-const PAPEL_NOME={'SÓC':'Sucesso do Cliente','PIE':'Pietro (exceção)','GT':'Gestor de Tráfego','IA':'Automação','CLI':'Cliente','CRC':'CRC da clínica'};
+// SIGLA_POR_PESSOA/PAPEL_NOME agora declarados no topo do script (ver nota
+// TDZ ali) — mantidos usados aqui sem redeclarar.
+
+// ---- Nova tarefa (avulsa, dentro de um cliente) ----
+// Mesma descrição usada pelo Python em DESC_FASE['MÓDULO EXTRA'] — mantém o
+// texto igual antes e depois do próximo rebuild da planilha.
+const DESC_MODULO_EXTRA = 'Tarefas avulsas do time — criadas no painel, sem prazo automático do modelo.';
+function abreNovaTarefa(abaPre){
+  const sel=document.getElementById('nt-cliente');
+  sel.innerHTML=D.clientes.map(c=>`<option value="${esc(c.aba)}" ${c.aba===abaPre?'selected':''}>${esc(c.nome)}</option>`).join('');
+  sel.disabled=!!abaPre;
+  document.getElementById('nt-resp').innerHTML=PESSOAS_ATRIBUIVEIS.map(p=>`<option>${esc(p)}</option>`).join('');
+  document.getElementById('nt-ativ').value='';
+  document.getElementById('nt-prazo').value='';
+  document.getElementById('nt-qw').checked=false;
+  document.getElementById('nt-verif').value='';
+  document.getElementById('nt-erro').textContent='';
+  abre('ov-tarefa');
+}
+async function criarTarefa(){
+  const erroEl=document.getElementById('nt-erro'); erroEl.textContent='';
+  const aba=document.getElementById('nt-cliente').value;
+  const ativ=document.getElementById('nt-ativ').value.trim();
+  const pessoa=document.getElementById('nt-resp').value;
+  const prazo=document.getElementById('nt-prazo').value; // '' ou 'AAAA-MM-DD'
+  const qw=document.getElementById('nt-qw').checked;
+  const verif=document.getElementById('nt-verif').value.trim();
+  if(!aba){ erroEl.textContent='Escolha o cliente.'; return; }
+  if(!ativ){ erroEl.textContent='Descreva o que fazer.'; return; }
+  if(ativ.length>200){ erroEl.textContent='"O que fazer" muito longo (máx. 200 caracteres).'; return; }
+  if(/^[=+\-@]/.test(ativ)){ erroEl.textContent='"O que fazer" não pode começar com = + - @.'; return; }
+  if(/[\r\n]/.test(ativ)){ erroEl.textContent='"O que fazer" não pode ter quebra de linha.'; return; }
+  if(verif.length>200){ erroEl.textContent='"Como verificar" muito longo (máx. 200 caracteres).'; return; }
+  if(/^[=+\-@]/.test(verif)){ erroEl.textContent='"Como verificar" não pode começar com = + - @.'; return; }
+  if(/[\r\n]/.test(verif)){ erroEl.textContent='"Como verificar" não pode ter quebra de linha.'; return; }
+  const sigla=SIGLA_POR_PESSOA[pessoa];
+  if(!sigla){ erroEl.textContent='Responsável inválido.'; return; }
+  if(prazo && !/^\d{4}-\d{2}-\d{2}$/.test(prazo)){ erroEl.textContent='Prazo inválido.'; return; }
+
+  const btn=document.getElementById('nt-salvar');
+  const res=await gasSave({acao:'nova_tarefa', aba, atividade:ativ, papel:sigla, prazo, tipo: qw?'QW':'', verif}, btn);
+  if(!res) return; // falhou — gasSave já mostrou o alerta com o motivo
+
+  const c=D.clientes.find(x=>x.aba===(res.aba||aba));
+  if(!c){ erroEl.textContent='Cliente não encontrado nesta sessão — reabra a janela.'; return; }
+  let modExtra=c.fases.find(f=>f.titulo==='MÓDULO EXTRA');
+  if(!modExtra){ modExtra={titulo:'MÓDULO EXTRA', desc:DESC_MODULO_EXTRA, itens:[]}; c.fases.push(modExtra); }
+  let cls;
+  if(!prazo) cls='sem_prazo';
+  else if(prazo===D.hoje) cls='hoje';
+  else if(prazo<D.hoje) cls = qw?'atraso_qw':'atrasado';
+  else cls='pendente';
+  modExtra.itens.push({
+    row:res.row, tempo:'avulsa', tipo: qw?'QW':'', papel:sigla, pessoas:[pessoa],
+    ativ, prev:prazo||'', feito:'', cls, motivo:'', verif,
+    // pendenteSync: o app.html publicado lê o espelho Supabase (não a
+    // planilha direto); a linha só entra nesse espelho no próximo cron de
+    // sync. Até lá, recarregar a página faz a tarefa sumir, e marcar feito
+    // como cs dá "acesso negado" (a RLS reconsulta o espelho e não acha a
+    // linha ainda). Achado médio 20/08 — flag só em memória, nunca
+    // persistida, pra avisar e travar "marcar feito" até o sync passar.
+    pendenteSync: !MODO_TREINO
+  });
+  fecha('ov-tarefa');
+  // Navega direto pro cliente em vez de só render(): a home/dashboard e a
+  // galeria filtram por F.periodo/F.status/F.cliente (persistidos em
+  // localStorage — achado médio 20/08), e a tarefa recém-criada podia sumir
+  // da tela sem nenhum aviso se o usuário tivesse um filtro antigo salvo.
+  // A página do cliente (renderCliente) lista TODOS os itens sem passar
+  // pelo filtro global, então sempre mostra a tarefa nova.
+  ULTIMA_TAREFA = {aba: c.aba, row: res.row};
+  vaiCliente(c.aba);
+  ABA_CLI='etapas';
+  render();
+}
+
 function abreAtv(cAba,row){
   const c=D.clientes.find(x=>x.aba===cAba);
   const fase=c.fases.find(f=>f.itens.some(i=>i.row===row));
@@ -1044,19 +1168,35 @@ function abreAtv(cAba,row){
     `<span class="pill p-mut">● ${esc(PAPEL_NOME[i.papel.split('+')[0].trim()]||i.papel)}</span>`, stBadge
   ].join(' ');
   const selTipo=['QW','PP','OV'].map(t=>`<option value="${t}" ${i.tipo===t?'selected':''}>${t==='QW'?'★ Celebração':t==='OV'?'◆ Overdelivery':'● Processo interno'}</option>`).join('');
-  const selResp=Object.keys(SIGLA_POR_PESSOA).map(p=>`<option ${i.pessoas[0]===p?'selected':''}>${p}</option>`).join('');
+  const respOpts = PESSOAS_ATRIBUIVEIS;
+  const selResp=respOpts.map(p=>`<option ${i.pessoas[0]===p?'selected':''}>${p}</option>`).join('');
   const motivos=['','Atraso nosso (QW)','Atraso nosso','Atraso do cliente','Dependência externa (GPI/bug)','Outro'];
   const selMot=motivos.map(m=>`<option ${i.motivo===m?'selected':''}>${m||'—'}</option>`).join('');
+  // tarefa avulsa (criada no painel): prazo é um VALOR digitado na criação,
+  // não uma fórmula de âncora do modelo — vira campo editável em vez do
+  // texto fixo "automático do modelo", que era simplesmente falso pra essas
+  // linhas (achado médio 20/08).
+  const ehAvulsa = i.tempo==='avulsa';
+  const prazoHtml = ehAvulsa
+    ? `<div><label>Prazo (tarefa avulsa)</label><input id="at-prazo" type="date" value="${i.prev||''}"></div>`
+    : `<div class="mfull prazoauto">📅 <label style="display:inline">Prazo previsto (automático do modelo)</label><br><b>${i.prev? fmtLongo(dt(i.prev)):'— aguarda âncora'}</b> <span style="color:var(--faint)">(${esc(fase.titulo.split(':')[0].toLowerCase())})</span> · <b>${esc(i.tempo)}</b></div>`;
+  // pendenteSync: espelho Supabase ainda não tem esta linha (achado médio
+  // 20/08) — "marcar feito" por um cs bateria "acesso negado" porque a
+  // reconsulta de RLS não acha a linha ainda. Trava o Salvar até o sync.
+  const avisoSync = i.pendenteSync
+    ? `<div class="aviso" style="margin:0 0 12px">⏳ Tarefa recém-criada, ainda sincronizando com o painel dos outros (roda 3x/dia). Enquanto isso, marcar feito por aqui pode falhar — edite direto na planilha (link "planilha ↗" abaixo) se for urgente.</div>`
+    : '';
   document.getElementById('atv-corpo').innerHTML=`
     <span class="fecha" onclick="fecha('ov-atv')">✕</span>
     <h2>${esc(i.ativ)}</h2><div class="sub">${esc(c.nome)} · ${esc(fase.titulo)}</div>
     <div class="mbadges">${badges}<span style="margin-left:auto;color:var(--faint);font-size:11px">◆ ${esc(fase.titulo.split(':')[0])}</span></div>
+    ${avisoSync}
     ${i.verif? `<div class="aviso" style="margin:0 0 12px">📌 [${esc(i.tipo)} · ${esc(i.tempo)}] Verificação: ${esc(i.verif)}</div>`:''}
     <div class="mgrid">
       <div class="mfull"><label>Atividade</label><input id="at-ativ" value="${esc(i.ativ)}"></div>
       <div><label>Tipo</label><select id="at-tipo">${selTipo}</select></div>
       <div><label>Responsável</label><select id="at-resp">${selResp}</select></div>
-      <div class="mfull prazoauto">📅 <label style="display:inline">Prazo previsto (automático do modelo)</label><br><b>${i.prev? fmtLongo(dt(i.prev)):'— aguarda âncora'}</b> <span style="color:var(--faint)">(${esc(fase.titulo.split(':')[0].toLowerCase())})</span> · <b>${esc(i.tempo)}</b></div>
+      ${prazoHtml}
       <div><label>Data de feito</label><input id="at-feito" type="date" value="${i.feito||''}"></div>
       <div><label>Status</label><select disabled><option>${st==='feito'?'Concluído':'Aguardando / Em andamento (automático)'}</option></select></div>
       <div class="mfull"><label>Motivo do atraso</label><select id="at-motivo">${selMot}</select></div>
@@ -1068,7 +1208,7 @@ function abreAtv(cAba,row){
       ${i.prev? `<a class="btn sec" target="_blank" style="text-decoration:none" href="https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('['+c.nome+'] '+i.ativ)}&dates=${i.prev.replace(/-/g,'')}/${i.prev.replace(/-/g,'')}&details=${encodeURIComponent('Central de Projetos Hawki · '+i.tempo+' · papel: '+i.pessoas.join('+'))}">agenda ↗</a>`:''}
       <a class="btn sec" target="_blank" href="${linhaCel(c,i.row,'F')}" style="text-decoration:none">planilha ↗</a>
       <button class="btn sec" onclick="fecha('ov-atv')">Cancelar</button>
-      <button class="btn" id="at-salvar">Salvar</button>
+      <button class="btn" id="at-salvar" ${i.pendenteSync?'disabled title="Aguarde o próximo sync (3x/dia) antes de marcar feito por aqui."':''}>Salvar</button>
     </div>`;
   document.getElementById('at-salvar').onclick=async ev=>{
     const g=id=>document.getElementById(id).value;
@@ -1082,10 +1222,14 @@ function abreAtv(cAba,row){
     const eraComposto = String(i.papel||'').indexOf('+')!==-1;
     const edits=[['D',g('at-ativ')],['B',g('at-tipo')],['F',feitoISO? fmtBRfull(feitoISO):''],['H',g('at-motivo')==='—'?'':g('at-motivo')]];
     if(!eraComposto) edits.push(['C',sigla]);
+    // prazo de tarefa avulsa é editável (achado médio 20/08) — o GAS só
+    // aceita a coluna E quando a linha é 'avulsa' (ver instanciador.gs).
+    if(ehAvulsa){ const novoPrazo=g('at-prazo'); edits.push(['E', novoPrazo? fmtBRfull(novoPrazo):'']); }
     const nota=g('at-nota').trim(); if(nota) edits.push(['I',(i.verif? i.verif+' · ':'')+nota]);
     if(await gasSave({acao:'set',aba:c.aba,row:i.row,edits}, ev.target)){
       i.ativ=g('at-ativ'); i.tipo=g('at-tipo');
       if(!eraComposto){ i.papel=sigla; i.pessoas=[pessoa]; }
+      if(ehAvulsa) i.prev=g('at-prazo')||'';
       i.feito=feitoISO; i.motivo=g('at-motivo')==='—'?'':g('at-motivo');
       if(feitoISO) i.cls='feito';
       else if(i.cls==='feito') i.cls = i.prev&&i.prev<D.hoje ? (i.tipo==='QW'?'atraso_qw':'atrasado') : 'pendente';
@@ -1137,16 +1281,32 @@ function render(){
   document.getElementById('crumb').textContent=cb;
   atualizaPill();
   const v=document.getElementById('view');
-  if(VIEW==='dashboard') return renderHome(v);
-  if(VIEW==='clientes') return CLI? renderCliente(v) : renderGaleria(v);
-  if(VIEW==='config') return renderConfig(v);
-  if(VIEW==='calendario') return renderCalendario(v);
-  if(VIEW==='cs') return renderCS(v);
-  if(VIEW==='celebracoes') return renderCelebracoes(v);
-  if(VIEW==='responsaveis') return renderResponsaveis(v);
-  if(VIEW==='modelo') return renderModelo(v);
-  if(VIEW==='usuarios') return renderUsuarios(v);
-  v.innerHTML=`<div class="constru"><b>${cb}</b>Tela em construção.</div>`;
+  if(VIEW==='dashboard') renderHome(v);
+  else if(VIEW==='clientes'){ if(CLI) renderCliente(v); else renderGaleria(v); }
+  else if(VIEW==='config') renderConfig(v);
+  else if(VIEW==='calendario') renderCalendario(v);
+  else if(VIEW==='cs') renderCS(v);
+  else if(VIEW==='celebracoes') renderCelebracoes(v);
+  else if(VIEW==='responsaveis') renderResponsaveis(v);
+  else if(VIEW==='modelo') renderModelo(v);
+  else if(VIEW==='usuarios') renderUsuarios(v);
+  else v.innerHTML=`<div class="constru"><b>${cb}</b>Tela em construção.</div>`;
+  // reaplica visibilidade por cargo (o botão "+ Nova tarefa" dentro da
+  // página do cliente é recriado a cada render — sem isto, um cargo
+  // restrito (gt/automacao) voltaria a vê-lo depois de navegar)
+  aplicaVisibilidadeCargo();
+  // consome ULTIMA_TAREFA uma única vez: rola até o item recém-criado e
+  // pisca um realce (achado médio 20/08 — a tarefa nascia lá embaixo, sem
+  // scroll nem destaque, indistinguível de "não salvou").
+  if(ULTIMA_TAREFA && VIEW==='clientes' && CLI===ULTIMA_TAREFA.aba){
+    const alvo = document.querySelector(`.fitem[data-row="${ULTIMA_TAREFA.row}"]`);
+    if(alvo){
+      alvo.scrollIntoView({behavior:'smooth',block:'center'});
+      alvo.classList.add('realce-novo');
+      setTimeout(()=>alvo.classList.remove('realce-novo'),2600);
+    }
+    ULTIMA_TAREFA=null;
+  }
 }
 
 // ---------- CELEBRAÇÕES (painel global; filtros mudam a visão) ----------
@@ -1208,7 +1368,7 @@ function renderResponsaveis(v){
     v.innerHTML=`
     <div class="aviso" style="margin-bottom:14px"><b>Modelo de time da Central:</b> cada cliente tem 1 CS e 1 gestor de tráfego; a Automação cobre o que na Burst é o dev; design é GT + IA de imagem (time compartilhado). Os admins têm visão geral de todos os clientes. Contadores respeitam os filtros do topo.</div>
     ${grupo('Admin','⚙',[card('Pietro','Admin · exceções','var(--roxo)',conta(porPessoa('Pietro'))),card('Marcos','Admin · sócio','var(--azul)',conta(porPessoa('Marcos')))])}
-    ${grupo('Sucesso do Cliente','☺',[card('Adão','Sucesso do Cliente · dono da implantação','var(--laranja)',conta(porPessoa('Adão')))])}
+    ${grupo('Sucesso do Cliente','☺',[card('Adão','Sucesso do Cliente · dono da implantação','var(--laranja)',conta(porPessoa('Adão'))),card('William','Sucesso do Cliente · CS','var(--laranja2)',conta(porPessoa('William')))])}
     ${grupo('Gestores de Tráfego','◉',[card('Gestora','Gestor de Tráfego','var(--azul)',conta(porPessoa('Gestora')))])}
     ${grupo('Automação','⚡',[card('Automação','IA / cron da casa','var(--verde)',conta(porPessoa('Automação')))])}
     ${grupoCliente}`;
@@ -1227,7 +1387,12 @@ function renderResponsaveis(v){
       const cards = doCargo.map((p,ix)=>{
         const nome = p.nome || (p.email? p.email.split('@')[0] : '—');
         const cor = ix===0 ? CARGO_COR1_RESP[cargo] : 'var(--azul)';
-        return card(nome, CARGO_LABEL[cargo]||cargo, cor, conta(porPessoa(CARGO_PAPEL_RESP[cargo])));
+        // conta pelo NOME real do perfil quando ele é uma pessoa conhecida
+        // (evita o card de William repetir os números do Adão — achado
+        // médio 20/08); só cai no cargo-padrão (CARGO_PAPEL_RESP) quando o
+        // nome cadastrado não bate com nenhuma pessoa mapeada.
+        const pessoaConta = SIGLA_POR_PESSOA[nome] ? nome : CARGO_PAPEL_RESP[cargo];
+        return card(nome, CARGO_LABEL[cargo]||cargo, cor, conta(porPessoa(pessoaConta)));
       });
       return grupo(CARGO_GRUPO_RESP[cargo], CARGO_ICONE_RESP[cargo], cards);
     }).join('');
@@ -1257,7 +1422,7 @@ function renderModelo(v){
 }
 
 // ---------- CALENDÁRIO ----------
-const COR_PAPEL = p => p.includes('SÓC')?'var(--laranja)':p.includes('GT')?'var(--azul)':p.includes('IA')?'var(--verde)':p.includes('PIE')?'var(--roxo)':(p.includes('CLI')||p.includes('CRC'))?'var(--amarelo)':'var(--faint)';
+const COR_PAPEL = p => p.includes('SÓC')?'var(--laranja)':p.includes('WIL')?'var(--wil)':p.includes('GT')?'var(--azul)':p.includes('IA')?'var(--verde)':p.includes('PIE')?'var(--roxo)':(p.includes('CLI')||p.includes('CRC'))?'var(--amarelo)':'var(--faint)';
 const corEv = i => i.cls==='atraso_qw'?'var(--vermelho)':i.tipo==='QW'?'var(--rosa)':stEfetivo(i)==='cliente'?'var(--amarelo)':COR_PAPEL(i.papel);
 let CAL_VIS = new Date(HOJE.getFullYear(), HOJE.getMonth(), 1);
 function renderCalendario(v){
@@ -1281,7 +1446,7 @@ function renderCalendario(v){
     <div class="calnav"><span onclick="CAL_VIS.setMonth(CAL_VIS.getMonth()-1);render()">‹</span><span onclick="CAL_VIS=new Date(HOJE.getFullYear(),HOJE.getMonth(),1);render()">Hoje</span><span onclick="CAL_VIS.setMonth(CAL_VIS.getMonth()+1);render()">›</span></div>
     <h1>${MESL[m]} de ${y}</h1>
     <div class="leg">
-      <i><b style="background:var(--laranja)"></b> CS</i><i><b style="background:var(--azul)"></b> Tráfego</i><i><b style="background:var(--verde)"></b> Automação</i><i><b style="background:var(--amarelo)"></b> Cliente/CRC</i><i><b style="background:var(--rosa)"></b> Celebração</i><i><b style="background:var(--vermelho)"></b> Atraso QW</i>
+      <i><b style="background:var(--laranja)"></b> CS Adão</i><i><b style="background:var(--wil)"></b> CS William</i><i><b style="background:var(--azul)"></b> Tráfego</i><i><b style="background:var(--verde)"></b> Automação</i><i><b style="background:var(--amarelo)"></b> Cliente/CRC</i><i><b style="background:var(--rosa)"></b> Celebração</i><i><b style="background:var(--vermelho)"></b> Atraso QW</i>
     </div></div>
   <div class="calsub">${noMes} atividade${noMes!==1?'s':''} no mês · clique em um dia para ver detalhes</div>
   <div class="calgrid">${cels}</div>`;
@@ -1576,7 +1741,11 @@ function renderCliente(v){
     corpo=c.fases.map((fa,ix)=>{
       const ff=fa.itens.filter(i=>i.cls==='feito').length;
       const na=fa.itens.filter(i=>i.cls==='atrasado'||i.cls==='atraso_qw').length;
-      return `<details class="fasebox" ${na||ix===0?'open':''}><summary><span class="dot" style="background:${na?'var(--vermelho)':ff===fa.itens.length?'var(--verde)':'var(--laranja)'}"></span>
+      // força aberto se: atrasada, primeira fase, OU contém a tarefa que
+      // acabou de ser criada (ULTIMA_TAREFA — achado médio 20/08: bloco
+      // MÓDULO EXTRA nascia sempre fechado, sem scroll nem destaque).
+      const temUltima = ULTIMA_TAREFA && ULTIMA_TAREFA.aba===c.aba && fa.itens.some(i=>i.row===ULTIMA_TAREFA.row);
+      return `<details class="fasebox" ${na||ix===0||temUltima?'open':''}><summary><span class="dot" style="background:${na?'var(--vermelho)':ff===fa.itens.length?'var(--verde)':'var(--laranja)'}"></span>
         <div><b>${esc(fa.titulo)}</b><small>${esc(fa.desc)}</small></div>
         <span class="fx">${na?`<span class="pill p-atr">● ${na}</span>`:''}<span>${ff}/${fa.itens.length}</span></span></summary>
         ${fa.itens.map(i=>fitem(c,i)).join('')}</details>`;}).join('');
@@ -1644,7 +1813,10 @@ function renderCliente(v){
     <div class="tile" style="--tc:var(--azul)"><small>⚡ Antecipadas</small><b style="color:var(--azul)">${antecip}</b><span>entregues antes do prazo</span></div>
   </div>
   ${c.obs? `<div class="aviso" style="margin-bottom:4px">〰 ${esc(c.obs)}</div>`:''}
-  <div class="abas">${abas.map(([k,l])=>`<span class="aba ${ABA_CLI===k?'on':''}" onclick="ABA_CLI='${k}';render()">${l}</span>`).join('')}</div>
+  <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:14px 0 0">
+    <div class="abas" style="margin:0">${abas.map(([k,l])=>`<span class="aba ${ABA_CLI===k?'on':''}" onclick="ABA_CLI='${k}';render()">${l}</span>`).join('')}</div>
+    <button class="btn sec cli-nova-tarefa" style="margin-left:auto" onclick="abreNovaTarefa('${esc(c.aba)}')">+ Nova tarefa</button>
+  </div>
   ${corpo}</div>`;
 }
 async function salvaCampo(ev,aba,cel,inputId,campo){
@@ -1682,9 +1854,13 @@ function pillSt(i){
 }
 function fitem(c,i){
   const done=i.cls==='feito';
-  return `<div class="fitem ${done?'done':''}" onclick="abreAtv('${esc(c.aba)}',${i.row})">
+  // pendenteSync: tarefa avulsa recém-criada, ainda não passou pelo cron de
+  // sync pro espelho Supabase — badge avisa em vez de deixar sumir/dar erro
+  // confuso em silêncio (achado médio 20/08).
+  const syncBadge = i.pendenteSync? ' <span class="pill p-mut" title="Entra no painel de todo mundo no próximo sync (3x/dia). Até lá, só quem está com a página aberta agora vê.">⏳ sincronizando</span>' : '';
+  return `<div class="fitem ${done?'done':''}" data-row="${i.row}" onclick="abreAtv('${esc(c.aba)}',${i.row})">
     <div class="tit">${i.tipo==='QW'?'★ ':''}${esc(i.ativ)}<small>${esc(i.tempo)}${i.prev?' · '+fmtCurto(dt(i.prev)):''}${done&&i.feito?' · feito '+fmtCurto(dt(i.feito)):''}</small></div>
-    <span class="fx"><span class="resp"><span class="mini">${ini(i.pessoas[0]||'?')}</span>${esc(i.pessoas[0]||'')}</span>${pillSt(i)}</span></div>`;
+    <span class="fx"><span class="resp"><span class="mini">${ini(i.pessoas[0]||'?')}</span>${esc(i.pessoas[0]||'')}</span>${pillSt(i)}${syncBadge}</span></div>`;
 }
 
 if(MODO_APP){ iniciarApp(); } else { render(); checaTour(); }
