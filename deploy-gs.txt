@@ -798,6 +798,8 @@ function _pessoasDoPapel_(papel) {
 
 /** Monta o objeto de UMA atividade espelhada a partir de uma linha A..I já lida da planilha (getValues, 1 linha x 9 cols). */
 function _montaAtividadeEspelho_(aba, row, vals) {
+  var prev = _dataISO_(vals[4]);
+  var feito = _dataISO_(vals[5]);
   return {
     cliente_aba: aba,
     row: row,
@@ -806,13 +808,35 @@ function _montaAtividadeEspelho_(aba, row, vals) {
     papel: String(vals[2] || ''),
     pessoas: _pessoasDoPapel_(vals[2]),
     ativ: String(vals[3] || ''),
-    prev: _dataISO_(vals[4]),
-    feito: _dataISO_(vals[5]),
-    cls: _classificaStatus_(vals[6]),
+    prev: prev,
+    feito: feito,
+    cls: _statusDaLinha_(vals[6], prev, feito, String(vals[1] || '')),
     motivo: String(vals[7] || ''),
     verif: String(vals[8] || ''),
     ativo: true,
   };
+}
+
+/**
+ * Status da linha para o espelho. Prefere o TEXTO da coluna G (a fórmula da
+ * planilha é a regra oficial), mas cai num cálculo equivalente quando a G vem
+ * vazia — que é o caso de linha recém-criada/editada: o Sheets ainda não
+ * recalculou a fórmula quando o doPost relê a linha, e classificar só pelo
+ * texto devolvia 'sem_prazo' mesmo com prazo e data de feito preenchidos
+ * (bug visto em 20/08: atividade marcada como feita chegava ao espelho como
+ * "sem prazo" e sumia dos contadores). Mesmos rótulos de classifica() no
+ * build_central.py.
+ */
+function _statusDaLinha_(textoStatus, prevISO, feitoISO, tipo) {
+  var s = String(textoStatus || '').trim();
+  if (s) return _classificaStatus_(s);
+  if (feitoISO) return 'feito';
+  if (!prevISO) return 'sem_prazo';
+  var hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  var d = new Date(prevISO + 'T00:00:00');
+  if (d < hoje) return String(tipo || '').toUpperCase() === 'QW' ? 'atraso_qw' : 'atrasado';
+  if (d.getTime() === hoje.getTime()) return 'hoje';
+  return 'pendente';
 }
 
 /** Linha de fase/cabeçalho (ex.: "FASE 01", "MÓDULO TRÁFEGO...", "QWS EXCLUSIVAS...") — nunca é atividade de verdade. */
@@ -860,12 +884,13 @@ function _supabaseUpsert_(tabela, onConflict, linhas) {
       // texto de policy RLS) só no log do Apps Script — achado leve 20/08:
       // isso chegava inteiro ao navegador de qualquer usuário logado.
       Logger.log('_supabaseUpsert_ falhou (' + tabela + '): HTTP ' + code + ' ' + r.getContentText().slice(0, 500));
-      // DIAGNÓSTICO TEMPORÁRIO 20/08: devolve a mensagem do PostgREST e o
-      // formato da chave lida (prefixo/tamanho, NUNCA o valor) porque a UI de
-      // execuções do Apps Script não abre o log. Remover depois de resolvido.
+      // devolve a mensagem curta do PostgREST (sem corpo completo, que pode
+      // trazer nome de policy/constraint) — foi o que permitiu achar o
+      // "Forbidden use of secret API key in browser" em 20/08, que só aparecia
+      // aqui porque a UI de execuções do Apps Script não abre o log.
       var msg = '';
-      try { msg = (JSON.parse(r.getContentText()) || {}).message || ''; } catch (e2) { msg = r.getContentText().slice(0, 80); }
-      return { ok: false, erro: 'falhou: HTTP ' + code + ' [' + String(msg).slice(0, 90) + '] key=' + key.slice(0, 10) + '…' + key.length };
+      try { msg = (JSON.parse(r.getContentText()) || {}).message || ''; } catch (e2) { msg = ''; }
+      return { ok: false, erro: 'falhou: HTTP ' + code + (msg ? ' [' + String(msg).slice(0, 80) + ']' : '') };
     }
     return { ok: true };
   } catch (err) {
