@@ -860,7 +860,12 @@ function _supabaseUpsert_(tabela, onConflict, linhas) {
       // texto de policy RLS) só no log do Apps Script — achado leve 20/08:
       // isso chegava inteiro ao navegador de qualquer usuário logado.
       Logger.log('_supabaseUpsert_ falhou (' + tabela + '): HTTP ' + code + ' ' + r.getContentText().slice(0, 500));
-      return { ok: false, erro: 'falhou: HTTP ' + code };
+      // DIAGNÓSTICO TEMPORÁRIO 20/08: devolve a mensagem do PostgREST e o
+      // formato da chave lida (prefixo/tamanho, NUNCA o valor) porque a UI de
+      // execuções do Apps Script não abre o log. Remover depois de resolvido.
+      var msg = '';
+      try { msg = (JSON.parse(r.getContentText()) || {}).message || ''; } catch (e2) { msg = r.getContentText().slice(0, 80); }
+      return { ok: false, erro: 'falhou: HTTP ' + code + ' [' + String(msg).slice(0, 90) + '] key=' + key.slice(0, 10) + '…' + key.length };
     }
     return { ok: true };
   } catch (err) {
