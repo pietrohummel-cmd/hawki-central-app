@@ -295,6 +295,12 @@ html.modo-treino .topbar{top:40px}
 .toast.info{border-left:3px solid var(--muted)}.toast.info .ic{color:var(--muted)}
 @media(min-width:761px){.toast-wrap{align-items:flex-end}}
 @media(max-width:760px){.toast-wrap{left:12px;right:12px;bottom:12px;top:auto;align-items:stretch}.toast{max-width:none}}
+/* selo de tempo real (topbar, só MODO_APP fora do treino) */
+.rt-dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex-shrink:0;align-self:center;margin-left:2px}
+.rt-dot.rt-live{background:var(--verde)}
+.rt-dot.rt-conectando{background:var(--amarelo)}
+.rt-dot.rt-off{background:var(--vermelho)}
+@keyframes rtPulse{0%{box-shadow:0 0 0 0 rgba(63,185,80,.45)}70%{box-shadow:0 0 0 6px rgba(63,185,80,0)}100%{box-shadow:0 0 0 0 rgba(63,185,80,0)}}
 /* transições curtas de acabamento — só quando o usuário não pediu menos movimento */
 @media(prefers-reduced-motion:no-preference){
   .toast{animation:toastIn .2s ease}
@@ -308,6 +314,7 @@ html.modo-treino .topbar{top:40px}
   .aba{transition:background-color .15s ease,color .15s ease}
   .overlay.on{animation:overlayIn .18s ease}
   .overlay.on .modal{animation:modalIn .2s ease}
+  .rt-dot.rt-live{animation:rtPulse 2s ease-in-out infinite}
 }
 @keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes toastOut{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(8px)}}
@@ -347,6 +354,7 @@ html.modo-treino .topbar{top:40px}
   <div class="main">
     <div class="topbar">
       <div class="crumb"><small id="crumb-top">Visão geral</small><b id="crumb">Dashboard</b></div>
+      <span id="rt-dot" class="rt-dot" style="display:none" title="Tempo real"></span>
       <div class="perfil" id="perfil-box"><span class="avatar">PH</span> Pietro · Admin · acesso total</div>
       <div class="filtros">
         <span id="f-pill" class="f-pill" title="Clique para limpar os filtros"></span>
@@ -659,7 +667,29 @@ async function gasSave(payload, btn){
     const j=await r.json();
     if(!j.ok) throw new Error(j.erro||'falha');
     if(btn){btn.textContent='✓ Salvo';setTimeout(()=>{btn.textContent=old;btn.disabled=false;},1200);}
-    toast('Gravado na planilha', 'sucesso');
+    // marca a ação como "local" pra não duplicar aviso quando o próprio
+    // evento realtime desta gravação voltar pelo Supabase (ver Fase 6 —
+    // marcaAcaoLocal/marcaAcaoLocalCliente, definidas mais abaixo no script).
+    if(typeof marcaAcaoLocal==='function'){
+      if(payload.acao==='set' && payload.aba && payload.row!=null) marcaAcaoLocal(payload.aba, payload.row);
+      else if(payload.acao==='nova_tarefa' && j.aba!=null && j.row!=null) marcaAcaoLocal(j.aba, j.row);
+      else if(payload.acao==='cel' && payload.aba) marcaAcaoLocalCliente(payload.aba);
+    }
+    // campo 'espelho' (GAS): honestidade > otimismo — se o espelho Supabase
+    // não gravou (sem service key configurada, ou a própria escrita falhou),
+    // a planilha (fonte de verdade) já está certa, mas o time que lê pelo
+    // painel publicado pode demorar a ver. Avisa em vez de deixar "Gravado"
+    // simples sugerir que todo mundo já está vendo.
+    // achado grave 20/08: o GAS NUNCA devolve a string exata 'falhou' — devolve
+    // 'falhou: HTTP 401', 'falhou: cliente=...; atividades=...' etc (sempre com
+    // detalhe depois do prefixo). O teste de igualdade estrita deixava passar
+    // toda falha real de espelho como se fosse sucesso (toast verde mentiroso).
+    const esp = String(j.espelho||'');
+    if(esp==='sem_chave' || esp.indexOf('falhou')===0){
+      toast('Gravado na planilha — o espelho do painel não atualizou agora; o time pode demorar a ver essa mudança.', 'info');
+    } else {
+      toast('Gravado na planilha', 'sucesso');
+    }
     return j; // {ok:true, ...} — chamadores que só precisam de sucesso continuam usando isto como truthy
   }catch(e){
     if(btn){btn.textContent=old;btn.disabled=false;}
@@ -751,6 +781,7 @@ async function fazerLogin(){
   SESSAO = data.session; await carregaAposLogin();
 }
 async function fazerLogout(){
+  pararRealtime();
   if(sb) await sb.auth.signOut();
   SESSAO=null; PERFIL=null; D=null;
   telaLogin();
@@ -765,10 +796,12 @@ async function carregaAposLogin(){
   if(!perfil.aprovado){ telaAguardando(); return; }
   await carregaDados();
 }
-async function carregaDados(){
-  const {data:clientesRows, error:e1} = await sb.from('clientes').select('*').eq('ativo',true);
-  const {data:atividadesRows, error:e2} = await sb.from('atividades').select('*').eq('ativo',true);
-  if(e1||e2){ telaLogin('Erro ao carregar dados: '+((e1||e2).message)); return; }
+// ---- helpers de mapeamento banco→D, compartilhados entre a carga inicial,
+// o refetch silencioso (reconexão) e o realtime (novo cliente) — DRY: uma
+// única definição do "formato de cliente do app" e do "formato de item"
+// pra nunca divergir entre os caminhos que preenchem D. ----
+const DESC_ATIVIDADES_APP = 'Atividades visíveis pro seu cargo (a permissão é aplicada no servidor pelo Supabase, não aqui).';
+function novoClienteVazio(c){
   // reagrupamento: a planilha tem cabeçalhos de fase (FASE 00, MÓDULO...) que
   // NÃO viraram linha própria no banco (só linhas de atividade existem em
   // "atividades"). Decisão desta microfase: no app autenticado cada cliente
@@ -776,21 +809,31 @@ async function carregaDados(){
   // fases[].itens[] — sem precisar recriar a lógica de fase/D+n aqui). Se
   // algum dia o dashboard do app precisar das fases originais, a saída é
   // publicar o título da fase junto na tabela atividades (coluna nova).
-  const clientes = (clientesRows||[]).map(c=>({
+  return {
     aba:c.aba, gid:0, nome:c.nome||c.aba, servico:c.servico||'',
     assinatura:c.assinatura||'', kickoff:c.kickoff||'', aniversario:c.aniversario||'',
     gt:c.gt||'', dev:'', info:c.info||'', obs:c.obs||'', cs:c.cs||'',
-    fases:[{titulo:'ATIVIDADES', desc:'Atividades visíveis pro seu cargo (a permissão é aplicada no servidor pelo Supabase, não aqui).', itens:[]}]
-  }));
+    fases:[{titulo:'ATIVIDADES', desc:DESC_ATIVIDADES_APP, itens:[]}]
+  };
+}
+function itemFromRow(a){
+  return {
+    row:a.row, tempo:a.tempo||'', tipo:a.tipo||'', papel:a.papel||'',
+    pessoas:a.pessoas||[], ativ:a.ativ||'', prev:a.prev||'', feito:a.feito||'',
+    cls:a.cls||'', motivo:a.motivo||'', verif:a.verif||''
+  };
+}
+function distribuiAtividade(porAba, a){
+  const c=porAba[a.cliente_aba]; if(!c) return;
+  c.fases[0].itens.push(itemFromRow(a));
+}
+async function carregaDados(){
+  const {data:clientesRows, error:e1} = await sb.from('clientes').select('*').eq('ativo',true);
+  const {data:atividadesRows, error:e2} = await sb.from('atividades').select('*').eq('ativo',true);
+  if(e1||e2){ telaLogin('Erro ao carregar dados: '+((e1||e2).message)); return; }
+  const clientes = (clientesRows||[]).map(novoClienteVazio);
   const porAba={}; clientes.forEach(c=>porAba[c.aba]=c);
-  (atividadesRows||[]).forEach(a=>{
-    const c=porAba[a.cliente_aba]; if(!c) return;
-    c.fases[0].itens.push({
-      row:a.row, tempo:a.tempo||'', tipo:a.tipo||'', papel:a.papel||'',
-      pessoas:a.pessoas||[], ativ:a.ativ||'', prev:a.prev||'', feito:a.feito||'',
-      cls:a.cls||'', motivo:a.motivo||'', verif:a.verif||''
-    });
-  });
+  (atividadesRows||[]).forEach(a=>distribuiAtividade(porAba,a));
   D = {
     gerado: new Date().toLocaleString('pt-BR'),
     hoje: todayISO(), sid:'', url_planilha:'',
@@ -800,7 +843,275 @@ async function carregaDados(){
   aplicaCabecalho(); montaFiltros(); aplicaPerfilTopo(); aplicaVisibilidadeCargo();
   fechaBoot(); VIEW='dashboard'; CLI=null; render();
   await checaTour();
+  iniciaRealtime();
 }
+
+// =====================================================================
+// Tela que se atualiza sozinha (Fase 6) — assinatura realtime do Supabase
+// em 'clientes'/'atividades', atualização cirúrgica de D (sem recarregar
+// tudo a cada evento), toast discreto pra mudança de outra pessoa, e
+// resiliência (reconecta + refetch quando a aba volta/o socket cai). Só
+// roda em MODO_APP e nunca durante o Modo Treino (dado fictício).
+// =====================================================================
+let RT_CHANNEL = null, RT_STATUS = 'off'; // 'off' | 'conectando' | 'live'
+// true só depois do 1º evento postgres_changes recebido de verdade — achado
+// médio 20/08: SUBSCRIBED não prova que a publication supabase_realtime tem
+// as tabelas (ver SQL em central/rls.sql); sem isto o selo pintava verde
+// "Ao vivo" mesmo com o recurso inteiramente inerte.
+let RT_EVENTO_RECEBIDO = false;
+let RT_RECONECTA_TO = null;
+let RT_RENDER_PENDENTE = false, RT_BLUR_TO = null;
+const RT_ACOES_ATIV = new Map(), RT_ACOES_CLI = new Map(); // dedupe de aviso pra ação do próprio usuário
+const RT_JANELA_LOCAL_MS = 8000;
+function marcaAcaoLocal(aba,row){ RT_ACOES_ATIV.set(aba+':'+row, Date.now()); }
+function eAcaoLocalRecente(aba,row){ const t=RT_ACOES_ATIV.get(aba+':'+row); return !!t && (Date.now()-t)<RT_JANELA_LOCAL_MS; }
+function marcaAcaoLocalCliente(aba){ RT_ACOES_CLI.set(aba, Date.now()); }
+function eAcaoLocalClienteRecente(aba){ const t=RT_ACOES_CLI.get(aba); return !!t && (Date.now()-t)<RT_JANELA_LOCAL_MS; }
+
+function avisaMudancaRemota(msg){ toast(msg, 'info'); }
+
+// Agrega toasts de uma tempestade de eventos (instanciar cliente = ~70
+// linhas espelhadas, uma âncora de kickoff preenchida = a aba inteira
+// re-upsertada) num único aviso por cliente por janela, em vez de um toast
+// por LINHA empilhando na tela de todo mundo logado (achado grave 20/08).
+const RT_TOAST_JANELA_MS = 1500;
+const RT_TOAST_BUFFER = new Map(); // aba -> {count, timer, msgUnico}
+function avisaMudancaAgregada(aba, nomeCliente, msgUnico){
+  let buf = RT_TOAST_BUFFER.get(aba);
+  if(!buf){ buf = {count:0, timer:null}; RT_TOAST_BUFFER.set(aba, buf); }
+  buf.count++;
+  buf.msgUnico = msgUnico;
+  clearTimeout(buf.timer);
+  buf.timer = setTimeout(()=>{
+    RT_TOAST_BUFFER.delete(aba);
+    avisaMudancaRemota(buf.count===1 ? buf.msgUnico : `${buf.count} atividades atualizadas em ${nomeCliente}`);
+  }, RT_TOAST_JANELA_MS);
+}
+
+// Nunca troca DOM debaixo do dedo de quem está digitando (textarea de
+// Informações/Observações, campos de Configurações etc. — tudo que vive
+// dentro de #view; os modais ficam FORA de #view e por isso já sobrevivem
+// a qualquer render() sem precisar deste guard).
+function estaDigitando(){
+  const view=document.getElementById('view');
+  const el=document.activeElement;
+  if(!el||!view||!view.contains(el)) return false;
+  if(el.tagName==='TEXTAREA') return true;
+  if(el.tagName==='INPUT'){ const t=(el.type||'text').toLowerCase(); return ['text','password','date','search','url','email','number','tel'].includes(t); }
+  return false;
+}
+// Idem pra tour guiado (spotlight aponta um seletor DENTRO de #view; um
+// render remoto no meio troca o elemento e o holofote fica apontando pro
+// vazio) e pro drag do kanban (um render no meio do arrasto destrói o card
+// e a coluna com o ondrop, perdendo o movimento em silêncio) — achado leve
+// 20/08. Mesma mecânica do guard de digitação: adia, não descarta.
+let TOUR_ATIVO = false, KANBAN_ARRASTANDO = false;
+function rerenderPreservandoEstado(){
+  if(!D) return;
+  if(estaDigitando() || TOUR_ATIVO || KANBAN_ARRASTANDO){ RT_RENDER_PENDENTE=true; return; }
+  const sx=window.scrollX, sy=window.scrollY;
+  render();
+  window.scrollTo(sx,sy);
+}
+document.getElementById('view').addEventListener('focusout', ()=>{
+  if(!RT_RENDER_PENDENTE) return;
+  clearTimeout(RT_BLUR_TO);
+  // pequeno atraso: dá tempo do clique que tirou o foco (ex.: "Salvar
+  // informações") terminar de rodar antes do DOM ser trocado debaixo dele.
+  RT_BLUR_TO=setTimeout(()=>{ if(!estaDigitando()){ RT_RENDER_PENDENTE=false; rerenderPreservandoEstado(); } }, 400);
+});
+
+// Coalesce N eventos realtime (uma escrita em bulk = 1 POST na planilha mas
+// 1 evento Postgres POR LINHA) num único render(), em vez de um render()
+// completo por evento — achado grave 20/08 (instanciar cliente ou preencher
+// a âncora de kickoff, rotina diária documentada no cabeçalho da aba,
+// disparavam 60-80 renders seguidos em todo navegador logado).
+let RT_COALESCE_TO = null;
+function agendaRenderCoalescido(){
+  clearTimeout(RT_COALESCE_TO);
+  RT_COALESCE_TO = setTimeout(()=>{ RT_COALESCE_TO=null; rerenderPreservandoEstado(); }, 250);
+}
+
+// (aba,row) da atividade com o modal ov-atv aberto agora, ou null — ver uso
+// em handleRealtimeAtividade e fechaAtv().
+let MODAL_ATV_ABERTO = null;
+
+function handleRealtimeAtividade(payload){
+  // prova que a publication supabase_realtime está de fato entregando
+  // (ver RT_EVENTO_RECEBIDO/atualizaSeloRT) — marca ANTES de qualquer
+  // guard/return, porque o evento em si já é a prova, mesmo que D não
+  // esteja pronto ainda.
+  if(RT_STATUS==='live' && !RT_EVENTO_RECEBIDO){ RT_EVENTO_RECEBIDO=true; atualizaSeloRT(); }
+  if(!MODO_APP || MODO_TREINO || !D) return;
+  const {eventType, new:novo, old} = payload;
+  const aba = (novo&&novo.cliente_aba) || (old&&old.cliente_aba);
+  const row = novo? novo.row : (old? old.row : null);
+  if(!aba || row==null) return;
+  const c = D.clientes.find(x=>x.aba===aba);
+  if(!c) return; // cliente ainda não carregado nesta sessão (corrida rara) — o próximo refetch silencioso resolve
+  const fase = c.fases[0];
+  const ix = fase.itens.findIndex(i=>i.row===row);
+  const removendo = eventType==='DELETE' || (novo && novo.ativo===false);
+  const local = eAcaoLocalRecente(aba,row);
+
+  if(removendo){
+    if(ix>=0){
+      const item=fase.itens[ix];
+      fase.itens.splice(ix,1);
+      if(!local) avisaMudancaAgregada(aba, c.nome, `Atividade removida em ${c.nome}: "${item.ativ}"`);
+      agendaRenderCoalescido();
+    }
+    return;
+  }
+  if(!novo) return;
+  const item = itemFromRow(novo);
+  if(ix>=0){
+    const antesFeito = fase.itens[ix].feito;
+    // Object.assign, NUNCA substitui o objeto (fase.itens[ix]=item): abreAtv
+    // guarda uma referência a este objeto no closure do botão Salvar —
+    // trocar o objeto deixava esse closure órfão, e o Salvar (montado com o
+    // valor ANTIGO do formulário) revertia em silêncio a mudança de quem
+    // acabou de editar (achado médio 20/08).
+    const abertoMesmaLinha = MODAL_ATV_ABERTO && MODAL_ATV_ABERTO.aba===aba && MODAL_ATV_ABERTO.row===row;
+    Object.assign(fase.itens[ix], item);
+    if(!local){
+      if(abertoMesmaLinha){
+        // avisa sem sujeito: não sabemos quem editou (não há coluna de
+        // autor no espelho) — atribuir a `pessoas[0]` seria inventar quem
+        // fez a ação (achado médio 20/08: fere a regra de casa de não
+        // afirmar dado sem fonte).
+        avisaMudancaRemota(`"${item.ativ}" mudou em ${c.nome} enquanto você editava — feche e reabra o card pra não sobrescrever.`);
+      } else if(!antesFeito && item.feito){
+        avisaMudancaAgregada(aba, c.nome, `"${item.ativ}" foi marcada como feita em ${c.nome}`);
+      } else {
+        avisaMudancaAgregada(aba, c.nome, `Atividade atualizada em ${c.nome}: "${item.ativ}"`);
+      }
+    }
+  } else {
+    fase.itens.push(item);
+    if(!local) avisaMudancaAgregada(aba, c.nome, `Nova tarefa em ${c.nome}: "${item.ativ}"`);
+  }
+  agendaRenderCoalescido();
+}
+
+async function handleRealtimeCliente(payload){
+  if(RT_STATUS==='live' && !RT_EVENTO_RECEBIDO){ RT_EVENTO_RECEBIDO=true; atualizaSeloRT(); }
+  if(!MODO_APP || MODO_TREINO || !D) return;
+  const {eventType, new:novo, old} = payload;
+  const aba = (novo&&novo.aba) || (old&&old.aba);
+  if(!aba) return;
+  const removendo = eventType==='DELETE' || (novo && novo.ativo===false);
+  const existente = D.clientes.find(x=>x.aba===aba);
+  const local = eAcaoLocalClienteRecente(aba);
+  if(removendo){
+    if(existente){
+      D.clientes = D.clientes.filter(x=>x.aba!==aba);
+      if(CLI===aba) CLI=null;
+      if(!local) avisaMudancaRemota(`Cliente removido: ${existente.nome}`);
+      agendaRenderCoalescido();
+    }
+    return;
+  }
+  if(!novo) return;
+  if(existente){
+    Object.assign(existente, {
+      nome:novo.nome||existente.nome, servico:novo.servico||'',
+      assinatura:novo.assinatura||'', kickoff:novo.kickoff||'',
+      aniversario:novo.aniversario||'', gt:novo.gt||'',
+      info:novo.info||'', obs:novo.obs||'', cs:novo.cs||existente.cs
+    });
+    D.cs_lista = Array.from(new Set(D.clientes.map(c=>c.cs).filter(Boolean)));
+    if(!local) avisaMudancaRemota(`Dados atualizados: ${existente.nome}`);
+    agendaRenderCoalescido();
+  } else {
+    // achado grave 20/08: o GAS posta 1 evento de `clientes` e DEPOIS ~70
+    // eventos de `atividades` em bulk (instanciar/espelhar aba inteira). Os
+    // eventos de atividade chegam ANTES deste await terminar e eram
+    // descartados por handleRealtimeAtividade (`if(!c) return`) porque o
+    // cliente ainda não existia em D — resultado: cliente aparecia na hora,
+    // mas sempre com ZERO atividades, até troca de aba/reload. Corrigido
+    // buscando o cliente JÁ com as atividades dele (em vez de refazer só a
+    // tabela `clientes`) — os eventos de atividade que chegarem depois
+    // acham `c` em D e casam por `row` (idempotente, sem duplicar).
+    const c = novoClienteVazio(novo);
+    D.clientes.push(c);
+    const {data:atividadesRows, error:e3} = await sb.from('atividades').select('*').eq('ativo',true).eq('cliente_aba',aba);
+    if(e3) console.error('handleRealtimeCliente (atividades do novo cliente):', e3.message);
+    else (atividadesRows||[]).forEach(a=>distribuiAtividade({[aba]:c}, a));
+    D.cs_lista = Array.from(new Set(D.clientes.map(x=>x.cs).filter(Boolean)));
+    montaFiltros();
+    avisaMudancaRemota(`Novo cliente: ${novo.nome||novo.aba}`);
+    agendaRenderCoalescido();
+  }
+}
+
+async function recarregaDadosSilencioso(){
+  // refetch completo (clientes + atividades), usado quando a aba volta a
+  // ficar visível ou a conexão reaparece — pra nunca ficar mostrando dado
+  // velho achando que está "ao vivo". Preserva VIEW/CLI/filtros (só troca
+  // D.clientes e re-renderiza cirurgicamente).
+  if(!MODO_APP || !sb || MODO_TREINO || !PERFIL || !D) return;
+  const {data:clientesRows, error:e1} = await sb.from('clientes').select('*').eq('ativo',true);
+  const {data:atividadesRows, error:e2} = await sb.from('atividades').select('*').eq('ativo',true);
+  if(e1||e2){ console.error('recarregaDadosSilencioso:', (e1||e2).message); return; }
+  const clientes = (clientesRows||[]).map(novoClienteVazio);
+  const porAba={}; clientes.forEach(c=>porAba[c.aba]=c);
+  (atividadesRows||[]).forEach(a=>distribuiAtividade(porAba,a));
+  D.clientes = clientes;
+  D.cs_lista = Array.from(new Set(clientes.map(c=>c.cs).filter(Boolean)));
+  if(CLI && !clientes.some(c=>c.aba===CLI)) CLI=null; // cliente sumiu (desativado) — evita tela quebrada
+  montaFiltros();
+  rerenderPreservandoEstado();
+}
+
+function atualizaSeloRT(){
+  const dot=document.getElementById('rt-dot');
+  if(!dot) return;
+  if(!MODO_APP || MODO_TREINO){ dot.style.display='none'; return; }
+  dot.style.display='inline-block';
+  dot.classList.remove('rt-live','rt-conectando','rt-off');
+  if(RT_STATUS==='live' && RT_EVENTO_RECEBIDO){ dot.classList.add('rt-live'); dot.title='Ao vivo — atualizações em tempo real ativas'; }
+  else if(RT_STATUS==='live'){ dot.classList.add('rt-conectando'); dot.title='Conectado, mas nenhum evento em tempo real confirmado ainda — pode levar alguns minutos, ou as tabelas podem não estar na publication supabase_realtime (ver central/rls.sql).'; }
+  else if(RT_STATUS==='conectando'){ dot.classList.add('rt-conectando'); dot.title='Conectando ao tempo real…'; }
+  else { dot.classList.add('rt-off'); dot.title='Tempo real desconectado — pode haver dado desatualizado'; }
+}
+function pararRealtime(){
+  clearTimeout(RT_RECONECTA_TO); RT_RECONECTA_TO=null;
+  if(RT_CHANNEL && sb){ sb.removeChannel(RT_CHANNEL); }
+  RT_CHANNEL=null; RT_STATUS='off'; RT_EVENTO_RECEBIDO=false; atualizaSeloRT();
+}
+function agendaReconexao(){
+  if(RT_RECONECTA_TO) return;
+  RT_RECONECTA_TO=setTimeout(()=>{
+    RT_RECONECTA_TO=null;
+    if(!MODO_APP || MODO_TREINO) return;
+    pararRealtime(); iniciaRealtime(); recarregaDadosSilencioso();
+  }, 4000);
+}
+function iniciaRealtime(){
+  if(!MODO_APP || !sb || MODO_TREINO || RT_CHANNEL) return;
+  RT_STATUS='conectando'; atualizaSeloRT();
+  RT_CHANNEL = sb.channel('central-realtime')
+    .on('postgres_changes', {event:'*', schema:'public', table:'atividades'}, handleRealtimeAtividade)
+    .on('postgres_changes', {event:'*', schema:'public', table:'clientes'}, handleRealtimeCliente)
+    .subscribe(status=>{
+      if(status==='SUBSCRIBED'){ RT_STATUS='live'; atualizaSeloRT(); }
+      else if(status==='CLOSED'){ RT_STATUS='off'; atualizaSeloRT(); }
+      else if(status==='CHANNEL_ERROR' || status==='TIMED_OUT'){ RT_STATUS='off'; atualizaSeloRT(); agendaReconexao(); }
+    });
+}
+// aba volta a ficar visível OU a rede volta: garante o canal vivo e faz um
+// refetch completo (o postgres_changes perdido enquanto a aba dormia não
+// é reenviado — só um refetch fecha a lacuna).
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible' && MODO_APP && !MODO_TREINO && PERFIL){
+    if(RT_STATUS!=='live'){ pararRealtime(); iniciaRealtime(); }
+    recarregaDadosSilencioso();
+  }
+});
+window.addEventListener('online', ()=>{
+  if(MODO_APP && !MODO_TREINO && PERFIL){ pararRealtime(); iniciaRealtime(); recarregaDadosSilencioso(); }
+});
 function aplicaPerfilTopo(){
   if(!MODO_APP || !PERFIL) return;
   const nome = PERFIL.nome || PERFIL.email.split('@')[0];
@@ -962,7 +1273,7 @@ function tourStepsFiltrados(){
   if(!MODO_APP || !PERFIL || !PERFIL.cargo) return TOUR_STEPS; // modo local ou sem cargo: mostra tudo
   return TOUR_STEPS.filter(p=>!p.cargos || p.cargos.includes(PERFIL.cargo));
 }
-function tourIniciar(){ TOUR_ATIVOS=tourStepsFiltrados(); TOUR_IX=0; tourPasso(); }
+function tourIniciar(){ TOUR_ATIVO=true; TOUR_ATIVOS=tourStepsFiltrados(); TOUR_IX=0; tourPasso(); }
 function tourPasso(){
   const passo=TOUR_ATIVOS[TOUR_IX];
   if(!passo){ tourFim(); return; }
@@ -1009,10 +1320,12 @@ function tourDesenha(passo){
   const prat=document.getElementById('tour-praticar'); if(prat) prat.onclick=()=>{ tourFim(); treinoEntrar(); };
 }
 async function tourFim(){
+  TOUR_ATIVO=false;
   document.getElementById('tour-spot').style.display='none';
   document.getElementById('tour-balao').style.display='none';
   if(MODO_APP && sb && PERFIL){ await sb.from('profiles').update({tour_visto:true}).eq('id',PERFIL.id); PERFIL.tour_visto=true; }
   else localStorage.setItem('central_tour_visto','1');
+  rerenderPreservandoEstado(); // solta um render remoto que ficou adiado durante o tour, se houver
 }
 async function checaTour(){
   if(MODO_APP){ if(PERFIL && !PERFIL.tour_visto) tourIniciar(); }
@@ -1100,12 +1413,16 @@ function dadosTreino(){
 function treinoEntrar(){
   if(MODO_TREINO) return;
   fecha('ov-novo'); fecha('ov-atv'); fecha('ov-tarefa');
+  // Modo treino opera sobre dado fictício — realtime tem que desligar antes
+  // de trocar D, senão um evento de fora reescreveria o cliente/atividade
+  // sandbox por engano (regra dura [3]).
+  pararRealtime();
   D_REAL=D; F_TREINO_BACK={...F};
   D=dadosTreino();
   F.cs='all'; F.cliente='all'; F.periodo='all'; F.status='all'; F.de=''; F.ate='';
   MODO_TREINO=true;
   document.documentElement.classList.add('modo-treino');
-  aplicaCabecalho(); montaFiltros();
+  aplicaCabecalho(); montaFiltros(); atualizaSeloRT();
   VIEW='dashboard'; CLI=null; render();
 }
 function treinoSair(){
@@ -1116,15 +1433,24 @@ function treinoSair(){
   F_TREINO_BACK=null;
   MODO_TREINO=false;
   document.documentElement.classList.remove('modo-treino');
-  aplicaCabecalho(); montaFiltros();
+  aplicaCabecalho(); montaFiltros(); atualizaSeloRT();
   VIEW='dashboard'; CLI=null; render();
+  // religa o realtime e refaz um refetch completo — o tempo em treino pode
+  // ter deixado o dado real desatualizado.
+  iniciaRealtime();
+  recarregaDadosSilencioso();
 }
 const treinoSairBtn = document.getElementById('treino-sair-btn');
 if(treinoSairBtn) treinoSairBtn.onclick = treinoSair;
 
 // ---- modais ----
 function abre(id){document.getElementById(id).classList.add('on');}
-function fecha(id){document.getElementById(id).classList.remove('on');}
+function fecha(id){
+  document.getElementById(id).classList.remove('on');
+  // qualquer caminho que feche o modal de atividade solta a trava (X, Cancelar,
+  // pós-salvar, sair do modo treino etc.) — nunca só o Salvar (achado médio 20/08).
+  if(id==='ov-atv') MODAL_ATV_ABERTO=null;
+}
 document.getElementById('novo').onclick=()=>abre('ov-novo');
 document.getElementById('nova-tarefa-btn').onclick=()=>abreNovaTarefa(CLI||null);
 function criarCliente(){
@@ -1194,12 +1520,13 @@ async function criarTarefa(){
     row:res.row, tempo:'avulsa', tipo: qw?'QW':'', papel:sigla, pessoas:[pessoa],
     ativ, prev:prazo||'', feito:'', cls, motivo:'', verif,
     // pendenteSync: o app.html publicado lê o espelho Supabase (não a
-    // planilha direto); a linha só entra nesse espelho no próximo cron de
-    // sync. Até lá, recarregar a página faz a tarefa sumir, e marcar feito
-    // como cs dá "acesso negado" (a RLS reconsulta o espelho e não acha a
-    // linha ainda). Achado médio 20/08 — flag só em memória, nunca
-    // persistida, pra avisar e travar "marcar feito" até o sync passar.
-    pendenteSync: !MODO_TREINO
+    // planilha direto). O GAS agora espelha nova_tarefa NA HORA (mesma
+    // requisição) — res.espelho==='ok' já confirma isso; só fica pendente
+    // se o campo vier ausente/sem_chave/falhou (achado médio 20/08: antes
+    // esta flag era incondicional e o painel continuava afirmando "roda
+    // 3x/dia" mesmo quando o espelho já tinha gravado no ato, bloqueando
+    // "marcar feito" à toa). Flag só em memória, nunca persistida.
+    pendenteSync: !MODO_TREINO && res.espelho!=='ok'
   });
   fecha('ov-tarefa');
   // Navega direto pro cliente em vez de só render(): a home/dashboard e a
@@ -1218,6 +1545,9 @@ function abreAtv(cAba,row){
   const c=D.clientes.find(x=>x.aba===cAba);
   const fase=c.fases.find(f=>f.itens.some(i=>i.row===row));
   const i=fase.itens.find(i=>i.row===row);
+  // trava usada por handleRealtimeAtividade pra avisar (em vez de sobrescrever
+  // em silêncio) se ESTA linha mudar remotamente enquanto o modal está aberto.
+  MODAL_ATV_ABERTO = {aba:cAba, row};
   const st=stEfetivo(i);
   const stBadge = st==='feito'?'<span class="pill p-ok">✓ Concluído</span>':st==='atraso_qw'?'<span class="pill p-qw">★ Atraso QW</span>':st==='atrasado'?'<span class="pill p-atr">● Atrasado</span>':st==='cliente'?'<span class="pill p-hoje">◔ Aguardando cliente</span>':st==='hoje'?'<span class="pill p-hoje">Vence hoje</span>':'<span class="pill p-hoje" style="background:rgba(227,179,65,.12);color:var(--amarelo)">● Aguardando</span>';
   const badges=[
@@ -1241,7 +1571,7 @@ function abreAtv(cAba,row){
   // 20/08) — "marcar feito" por um cs bateria "acesso negado" porque a
   // reconsulta de RLS não acha a linha ainda. Trava o Salvar até o sync.
   const avisoSync = i.pendenteSync
-    ? `<div class="aviso" style="margin:0 0 12px">⏳ Tarefa recém-criada, ainda sincronizando com o painel dos outros (roda 3x/dia). Enquanto isso, marcar feito por aqui pode falhar — edite direto na planilha (link "planilha ↗" abaixo) se for urgente.</div>`
+    ? `<div class="aviso" style="margin:0 0 12px">⏳ O espelho desta tarefa não confirmou agora (o painel de outras pessoas pode não mostrá-la ainda; recarregar a página em instantes costuma resolver). Enquanto isso, marcar feito por aqui pode falhar — edite direto na planilha (link "planilha ↗" abaixo) se for urgente.</div>`
     : '';
   document.getElementById('atv-corpo').innerHTML=`
     <span class="fecha" onclick="fecha('ov-atv')">✕</span>
@@ -1265,7 +1595,7 @@ function abreAtv(cAba,row){
       ${i.prev? `<a class="btn sec" target="_blank" style="text-decoration:none" href="https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('['+c.nome+'] '+i.ativ)}&dates=${i.prev.replace(/-/g,'')}/${i.prev.replace(/-/g,'')}&details=${encodeURIComponent('Central de Projetos Hawki · '+i.tempo+' · papel: '+i.pessoas.join('+'))}">agenda ↗</a>`:''}
       <a class="btn sec" target="_blank" href="${linhaCel(c,i.row,'F')}" style="text-decoration:none">planilha ↗</a>
       <button class="btn sec" onclick="fecha('ov-atv')">Cancelar</button>
-      <button class="btn" id="at-salvar" ${i.pendenteSync?'disabled title="Aguarde o próximo sync (3x/dia) antes de marcar feito por aqui."':''}>Salvar</button>
+      <button class="btn" id="at-salvar" ${i.pendenteSync?'disabled title="O espelho não confirmou agora — recarregue a página em instantes ou edite direto na planilha."':''}>Salvar</button>
     </div>`;
   document.getElementById('at-salvar').onclick=async ev=>{
     const g=id=>document.getElementById(id).value;
@@ -1603,6 +1933,16 @@ function renderConfig(v){
     <div style="display:flex;gap:8px;margin-top:10px"><button class="btn" id="cfg-salvar">Salvar e testar</button>
     <span class="mnote" id="cfg-st" style="align-self:center">${API()? '● configurada':'○ não configurada — painel em modo leitura'}</span></div>
   </div>
+  <div class="box" style="max-width:680px;margin-top:14px"><h2>⚡ Espelho em tempo real (Supabase) <span class="bdg">${RT_STATUS==='live'&&RT_EVENTO_RECEBIDO?'● ao vivo':RT_STATUS==='live'?'● conectado, sem eventos':'○ verificar'}</span></h2>
+    ${MODO_APP ? `
+    <div class="mnote" style="margin-bottom:10px">O painel publicado (app.html) NÃO lê a planilha direto — lê este espelho no Supabase, atualizado a cada gravação. Sem a chave abaixo, o GAS não consegue espelhar e o painel só atualiza no próximo sync manual.</div>
+    <label style="display:block;font-size:10px;letter-spacing:.1em;color:var(--faint);text-transform:uppercase;margin:0 0 4px">SUPABASE_SERVICE_KEY (fica só no Apps Script — Script Properties, nunca aqui no HTML público)</label>
+    <input id="cfg-svc" type="password" style="width:100%" placeholder="service_role key do projeto muerqpmwvvewxjusgubb">
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn" id="cfg-svc-salvar">Salvar no Apps Script</button>
+    <span class="mnote" style="align-self:center">Exige login de admin (não funciona no arquivo local) — a chave some do campo assim que salva.</span></div>
+    <div class="mnote" style="margin-top:10px;border-left:2px solid var(--laranja);padding-left:10px">Pré-condição de banco (rodar 1x no SQL Editor do Supabase): <code>central/rls.sql</code> tem o SQL que coloca <code>clientes</code>/<code>atividades</code> na publication <code>supabase_realtime</code> com <code>replica identity full</code>. Sem isso o selo acima nunca vira "ao vivo", mesmo com a chave salva.</div>`
+    : `<div class="mnote">Configurar a chave por aqui exige login de admin no app.html publicado (este arquivo local não tem sessão). Alternativa: colar direto em Apps Script → Configurações do projeto (⚙) → Script Properties → <code>SUPABASE_SERVICE_KEY</code>.</div>`}
+  </div>
   <div class="box" style="max-width:680px;margin-top:14px"><h2>▤ Agenda Google (sync do time)</h2>
     <div class="mnote" style="margin-bottom:8px">O sync roda pelo mesmo Apps Script: menu <b>Central &gt; Sincronizar agenda Google</b> na planilha cria/atualiza a agenda compartilhada <b>"Central de Projetos Hawki"</b> com as atividades previstas dos próximos 120 dias (dá pra agendar um acionador diário no Apps Script: Acionadores &gt; + &gt; sincronizarAgenda &gt; diário). Cada pessoa do time:</div>
     <ol style="font-size:13px;color:var(--muted);padding-left:18px;line-height:2">
@@ -1624,6 +1964,14 @@ function renderConfig(v){
     if(!token&&!list) return alert('Preencha token e/ou list ID.');
     const okk=await gasSave({acao:'cfg_clickup',token,list}, ev.target);
     if(okk){ document.getElementById('cu-token').value=''; }
+  };
+  const btnSvc=document.getElementById('cfg-svc-salvar');
+  if(btnSvc) btnSvc.onclick=async ev=>{
+    if(treinoBloqueia('Salvar chave do Supabase')) return;
+    const key=document.getElementById('cfg-svc').value.trim();
+    if(!key) return alert('Cole a service_role key primeiro.');
+    const okk=await gasSave({acao:'cfg_supabase',service_key:key}, ev.target);
+    if(okk){ document.getElementById('cfg-svc').value=''; }
   };
   document.getElementById('cu-buscar').onclick=async ev=>{
     if(treinoBloqueia('Buscar novos clientes do ClickUp')) return;
@@ -1814,7 +2162,7 @@ function renderCliente(v){
   }
   if(ABA_CLI==='kanban'){
     const col=(key,t,cor,lista,nota)=>`<div class="kbcol" data-col="${key}" ondragover="event.preventDefault()" ondrop="kbDrop(event,'${esc(c.aba)}','${key}')"><h3><span style="color:${cor}">●</span> ${t}<span class="n">${lista.length}</span></h3>
-      ${lista.length? lista.map(i=>`<div class="kbcard" draggable="true" ondragstart="event.dataTransfer.setData('text/plain','${i.row}')" style="--kc:${cor}" onclick="abreAtv('${esc(c.aba)}',${i.row})"><span class="mini">${ini(i.pessoas[0]||'?')}</span>${i.tipo==='QW'?'★ ':''}${esc(i.ativ)}<small>${esc(i.tempo)}${i.prev?' · '+fmtCurto(dt(i.prev)):''}</small></div>`).join('') : `<div class="vazio">${nota||'Sem atividades'}</div>`}</div>`;
+      ${lista.length? lista.map(i=>`<div class="kbcard" draggable="true" ondragstart="event.dataTransfer.setData('text/plain','${i.row}');KANBAN_ARRASTANDO=true;" ondragend="KANBAN_ARRASTANDO=false;rerenderPreservandoEstado();" style="--kc:${cor}" onclick="abreAtv('${esc(c.aba)}',${i.row})"><span class="mini">${ini(i.pessoas[0]||'?')}</span>${i.tipo==='QW'?'★ ':''}${esc(i.ativ)}<small>${esc(i.tempo)}${i.prev?' · '+fmtCurto(dt(i.prev)):''}</small></div>`).join('') : `<div class="vazio">${nota||'Sem atividades'}</div>`}</div>`;
     corpo=`<div class="mnote" style="margin-bottom:8px">Arraste um card pra <b>Concluído</b> pra marcar feito hoje (ou de volta pra desfazer). Pendente/Atrasado nascem do prazo — não são arrastáveis entre si.</div><div class="kb">
       ${col('pendente','Pendente','var(--amarelo)',its.filter(i=>['pendente','hoje','sem_prazo'].includes(stEfetivo(i))))}
       ${col('andamento','Em andamento','var(--verde)',[],'Status manual entra quando houver necessidade real (na Burst também é automático)')}
@@ -1941,10 +2289,10 @@ function pillSt(i){
 }
 function fitem(c,i){
   const done=i.cls==='feito';
-  // pendenteSync: tarefa avulsa recém-criada, ainda não passou pelo cron de
-  // sync pro espelho Supabase — badge avisa em vez de deixar sumir/dar erro
-  // confuso em silêncio (achado médio 20/08).
-  const syncBadge = i.pendenteSync? ' <span class="pill p-mut" title="Entra no painel de todo mundo no próximo sync (3x/dia). Até lá, só quem está com a página aberta agora vê.">⏳ sincronizando</span>' : '';
+  // pendenteSync: tarefa avulsa recém-criada cujo espelho Supabase não
+  // confirmou na hora (res.espelho!=='ok') — badge avisa em vez de deixar
+  // sumir/dar erro confuso em silêncio (achado médio 20/08).
+  const syncBadge = i.pendenteSync? ' <span class="pill p-mut" title="O espelho desta tarefa não confirmou ainda. Recarregue a página em instantes para ver se já entrou.">⏳ sincronizando</span>' : '';
   return `<div class="fitem ${done?'done':''}" data-row="${i.row}" onclick="abreAtv('${esc(c.aba)}',${i.row})">
     <div class="tit">${i.tipo==='QW'?'★ ':''}${esc(i.ativ)}<small>${esc(i.tempo)}${i.prev?' · '+fmtCurto(dt(i.prev)):''}${done&&i.feito?' · feito '+fmtCurto(dt(i.feito)):''}</small></div>
     <span class="fx"><span class="resp"><span class="mini">${ini(i.pessoas[0]||'?')}</span>${esc(i.pessoas[0]||'')}</span>${pillSt(i)}${syncBadge}</span></div>`;
