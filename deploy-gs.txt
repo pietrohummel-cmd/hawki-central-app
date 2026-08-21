@@ -16,8 +16,9 @@
  *    adaptadas D+n + as 2 QWs exclusivas do combo) — idêntico ao script
  *    Python de referência, porque é uma seleção curada (§4.7 do plano),
  *    não uma cópia do modelo inteiro.
- *  - Fórmulas usam vírgula (sintaxe canônica do Apps Script); o locale
- *    pt-BR da planilha converte a exibição sozinho.
+ *  - Fórmulas NUNCA são escritas com vírgula fixa: o separador vem de
+ *    _sepFormula_() (ver o comentário lá). Numa planilha pt_BR a vírgula
+ *    quebra tudo com #ERROR! — foi o bug de 20/08/2026.
  */
 
 /**
@@ -233,7 +234,7 @@ function instanciarClienteNovo() {
 
     // ---- criar a aba e escrever ----
     var sheet = ss.insertSheet(nomeAba);
-    sheet.getRange(1, 1, rows.length, 9).setValues(rows);
+    _escreveBlocoDaAba_(sheet, rows);
     sheet.setFrozenRows(5);
     sheet.getRange(5, 1, 1, 9).setFontWeight('bold');
     sheet.setColumnWidth(4, LARGURA_COL_ATIVIDADE); // D = Atividade
@@ -395,6 +396,7 @@ function montarAba_(servico, dataAssinatura, dataKickoff, linhas, nomeCliente) {
   rows.push(['', '', '', '', '', '', '', '', '']);
   rows.push(['Tempo', 'Tipo', 'Papel', 'Atividade', 'Data prevista', 'Data de feito', 'Status', 'Motivo', 'Verificação / Nota']);
 
+  var SEP = _sepFormula_(); // pt_BR usa ';' — vírgula grava #ERROR! (ver _sepFormula_)
   var r = rows.length; // 5 linhas de cabeçalho já escritas; próxima linha da planilha (1-indexed) = r + 1
   for (var i = 0; i < linhas.length; i++) {
     var l = linhas[i];
@@ -409,21 +411,21 @@ function montarAba_(servico, dataAssinatura, dataKickoff, linhas, nomeCliente) {
     var prev;
     if (t.indexOf('A+') === 0) {
       var nA = parseInt(t.substring(2), 10);
-      prev = '=IF($E$1="","",WORKDAY($E$1,' + nA + '))';
+      prev = '=IF($E$1=""' + SEP + '""' + SEP + 'WORKDAY($E$1' + SEP + nA + '))';
     } else if (t.indexOf('D+') === 0) {
       var nD = parseInt(t.substring(2), 10);
-      prev = '=IF($E$2="","",$E$2+' + nD + ')';
+      prev = '=IF($E$2=""' + SEP + '""' + SEP + '$E$2+' + nD + ')';
     } else {
       prev = ''; // "sem prazo" / "mensal" / "aniversário" / "1ª ocorrência": marco sem contador de atraso
     }
 
     var status;
     if (prev) {
-      status = '=IF(F' + r + '<>"","✅ Feito",IF(E' + r + '="","⏳ aguarda âncora",' +
-        'IF(TODAY()>E' + r + ',IF(B' + r + '="QW","🔴 ATRASO QW","🔴 Atrasado"),' +
-        'IF(TODAY()=E' + r + ',"🟡 HOJE","⬜ Pendente"))))';
+      status = '=IF(F' + r + '<>""' + SEP + '"✅ Feito"' + SEP + 'IF(E' + r + '=""' + SEP + '"⏳ aguarda âncora"' + SEP +
+        'IF(TODAY()>E' + r + SEP + 'IF(B' + r + '="QW"' + SEP + '"🔴 ATRASO QW"' + SEP + '"🔴 Atrasado")' + SEP +
+        'IF(TODAY()=E' + r + SEP + '"🟡 HOJE"' + SEP + '"⬜ Pendente"))))';
     } else {
-      status = '=IF(F' + r + '<>"","✅ Feito","◽ sem prazo")';
+      status = '=IF(F' + r + '<>""' + SEP + '"✅ Feito"' + SEP + '"◽ sem prazo")';
     }
 
     rows.push([t, l.tipo, l.papel, l.ativ, prev, '', status, '', l.verif || '']);
@@ -432,6 +434,127 @@ function montarAba_(servico, dataAssinatura, dataKickoff, linhas, nomeCliente) {
 }
 
 // ---------- UTIL ----------
+
+/**
+ * Separador de argumentos das fórmulas, conforme a LOCALIDADE da planilha.
+ *
+ * Descoberto na marra em 20/08/2026: o Apps Script NÃO converte vírgula pro
+ * locale. Nesta planilha (Arquivo > Configurações > Localidade: Brasil,
+ * getSpreadsheetLocale() = 'pt_BR') a fórmula com vírgula é gravada verbatim
+ * e a célula devolve #ERROR! ("erro de análise de fórmula"). Comprovado com
+ * uma função de teste rodada no editor:
+ *     setValue('=IF(1=1,"US","x")')   -> #ERROR!
+ *     setFormula('=IF(1=1,"US","x")') -> #ERROR!
+ *     setFormula('=IF(1=1;"BR";"x")') -> BR
+ * Consequência do bug: TODAS as colunas E (Data prevista) e G (Status) das
+ * abas de cliente ficaram #ERROR! desde a criação das abas, e o espelho do
+ * Supabase enxergava 306 de 320 atividades como "sem prazo" — a Central
+ * inteira ficou sem prazo e sem status. Corrigido com este separador +
+ * repararFormulasLocale().
+ *
+ * Regra: locale que usa PONTO como decimal separa argumentos por vírgula;
+ * locale que usa VÍRGULA como decimal (pt_BR, es_*, de_*, fr_* ...) separa
+ * por ponto e vírgula. A lista abaixo cobre os locales de vírgula que a
+ * Hawki poderia usar; qualquer outro cai no ponto e vírgula (o certo aqui).
+ */
+var LOCALES_ARG_VIRGULA_ = {
+  en_US: 1, en_GB: 1, en_AU: 1, en_CA: 1, en_IE: 1, en_NZ: 1, en_IN: 1, en_ZA: 1,
+  ja_JP: 1, ko_KR: 1, zh_CN: 1, zh_TW: 1, zh_HK: 1, th_TH: 1, he_IL: 1, ms_MY: 1,
+};
+function _sepFormula_() {
+  var loc = 'pt_BR';
+  try { loc = String(SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetLocale() || 'pt_BR'); } catch (e) {}
+  return LOCALES_ARG_VIRGULA_[loc] ? ',' : ';';
+}
+
+/**
+ * Normaliza os separadores de argumento de UMA fórmula para `sep`, ignorando
+ * o que está dentro de aspas (os rótulos "✅ Feito", "🔴 ATRASO QW" etc.).
+ * ATENÇÃO: nenhuma fórmula desta planilha usa número decimal — se um dia usar,
+ * este conversor trocaria o separador decimal junto. Só trocar aqui com teste.
+ */
+function _trocaSepFormula_(f, sep) {
+  var s = String(f || '');
+  if (s.charAt(0) !== '=') return s;
+  var out = '';
+  var dentroAspas = false;
+  for (var i = 0; i < s.length; i++) {
+    var ch = s.charAt(i);
+    if (ch === '"') dentroAspas = !dentroAspas;
+    if (!dentroAspas && (ch === ',' || ch === ';')) { out += sep; continue; }
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * Escreve o bloco A..I de uma aba nova e RE-APLICA com setFormula toda célula
+ * que é fórmula. setValues também passa pelo parser de locale (foi por ali que
+ * o #ERROR! de 20/08 entrou), então as fórmulas são gravadas de novo pela API
+ * específica — só as células que começam com '=' , as outras ficam intactas.
+ */
+function _escreveBlocoDaAba_(sheet, rows) {
+  sheet.getRange(1, 1, rows.length, 9).setValues(rows);
+  for (var i = 0; i < rows.length; i++) {
+    for (var j = 0; j < 9; j++) {
+      var v = rows[i][j];
+      if (typeof v === 'string' && v.charAt(0) === '=') sheet.getRange(i + 1, j + 1).setFormula(v);
+    }
+  }
+  SpreadsheetApp.flush();
+}
+
+/**
+ * MANUTENÇÃO (rodar no editor, sem deploy): reescreve com o separador certo
+ * TODA fórmula das abas "Cliente – *" e re-espelha cada aba no Supabase.
+ * Idempotente — reescrever uma fórmula já correta não muda nada. Devolve (e
+ * loga) um resumo do que tocou.
+ */
+function repararFormulasLocale() {
+  var sep = _sepFormula_();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var abas = ss.getSheets();
+  var resumo = { sep: sep, locale: String(ss.getSpreadsheetLocale()), abas: [] };
+
+  for (var a = 0; a < abas.length; a++) {
+    var sh = abas[a];
+    var nome = sh.getName();
+    if (nome.indexOf(PREFIXO_ABA_CLIENTE) !== 0) continue;
+
+    var ultima = sh.getLastRow();
+    if (ultima < 6) continue;
+
+    var alcance = sh.getRange(1, 1, ultima, 9);
+    var formulas = alcance.getFormulas();
+    var mudou = 0;
+    for (var i = 0; i < formulas.length; i++) {
+      for (var j = 0; j < formulas[i].length; j++) {
+        var f = formulas[i][j];
+        if (!f) continue;
+        var nova = _trocaSepFormula_(f, sep);
+        if (nova !== f) { formulas[i][j] = nova; mudou++; }
+        else { formulas[i][j] = f; }
+      }
+    }
+    if (mudou) {
+      // só reescreve as células que de fato mudaram (setFormulas exige a matriz
+      // inteira, e escrever '' onde havia valor apagaria dado)
+      for (var y = 0; y < formulas.length; y++) {
+        for (var x = 0; x < formulas[y].length; x++) {
+          var atual = formulas[y][x];
+          if (!atual || atual.charAt(0) !== '=') continue;
+          sh.getRange(y + 1, x + 1).setFormula(atual);
+        }
+      }
+      SpreadsheetApp.flush();
+    }
+    var espelho = _espelharAbaCompleta_(sh, nome);
+    resumo.abas.push({ aba: nome, formulas_corrigidas: mudou, espelho: espelho });
+  }
+
+  Logger.log(JSON.stringify(resumo));
+  return JSON.stringify(resumo);
+}
 
 /** Converte "dd/mm/aaaa" em Date, validando data real (rejeita 31/02 etc). */
 function parseDataBR_(texto) {
@@ -617,9 +740,10 @@ function _parsePrazoISO_(txt) {
  * prazo) fundidos num só IF porque aqui a checagem "E vazio" já é suficiente.
  */
 function _formulaStatusAvulsa_(r) {
-  return '=IF(F' + r + '<>"","✅ Feito",IF(E' + r + '="","◽ sem prazo",' +
-    'IF(TODAY()>E' + r + ',IF(B' + r + '="QW","🔴 ATRASO QW","🔴 Atrasado"),' +
-    'IF(TODAY()=E' + r + ',"🟡 HOJE","⬜ Pendente"))))';
+  var SEP = _sepFormula_(); // pt_BR usa ';' — vírgula grava #ERROR! (ver _sepFormula_)
+  return '=IF(F' + r + '<>""' + SEP + '"✅ Feito"' + SEP + 'IF(E' + r + '=""' + SEP + '"◽ sem prazo"' + SEP +
+    'IF(TODAY()>E' + r + SEP + 'IF(B' + r + '="QW"' + SEP + '"🔴 ATRASO QW"' + SEP + '"🔴 Atrasado")' + SEP +
+    'IF(TODAY()=E' + r + SEP + '"🟡 HOJE"' + SEP + '"⬜ Pendente"))))';
 }
 
 /** Acha a linha do cabeçalho "MÓDULO EXTRA" (coluna A) na aba, ou 0 se não existir ainda. */
@@ -712,8 +836,12 @@ function _novaTarefa_(p, sh, sbCheck) {
     sh.getRange(r, 9).setNumberFormat('@');
 
     sh.getRange(r, 1, 1, 9).setValues([[
-      'avulsa', tipo, papel, vAtiv.valor, prazoParsed.data || '', '', _formulaStatusAvulsa_(r), '', vVerif.valor
+      'avulsa', tipo, papel, vAtiv.valor, prazoParsed.data || '', '', '', '', vVerif.valor
     ]]);
+    // G é fórmula: escrita com setFormula (e com o separador do locale) porque
+    // setValue de string começando com '=' também passa pelo parser de locale
+    // e foi exatamente aí que nasceu o #ERROR! de 20/08 — ver _sepFormula_.
+    sh.getRange(r, 7).setFormula(_formulaStatusAvulsa_(r));
 
     // espelho imediato — mesma régua de 'set' (linha 764-771): nunca derruba
     // a operação, só reporta em `espelho` se o Supabase falhar.
@@ -1316,7 +1444,7 @@ function _instanciarCore(nome, tipo, dataAssinatura, dataKickoff) {
 
   var rows = montarAba_(servicoLabel, dataAssinatura, dataKickoff, linhas, nome);
   var sheet = ss.insertSheet(nomeAba);
-  sheet.getRange(1, 1, rows.length, 9).setValues(rows);
+  _escreveBlocoDaAba_(sheet, rows);
   sheet.setFrozenRows(5);
   sheet.getRange(5, 1, 1, 9).setFontWeight('bold');
   sheet.setColumnWidth(4, LARGURA_COL_ATIVIDADE);
