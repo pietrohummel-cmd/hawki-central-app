@@ -1596,7 +1596,9 @@ function abreAtv(cAba,row){
       <a class="btn sec" target="_blank" href="${linhaCel(c,i.row,'F')}" style="text-decoration:none">planilha ↗</a>
       <button class="btn sec" onclick="fecha('ov-atv')">Cancelar</button>
       <button class="btn" id="at-salvar" ${i.pendenteSync?'disabled title="O espelho não confirmou agora — recarregue a página em instantes ou edite direto na planilha."':''}>Salvar</button>
-    </div>`;
+    </div>
+    ${blocoAnexosHtml()}`;
+  if(podeVerArquivos()) carregaAnexos(c.aba, i.row);
   document.getElementById('at-salvar').onclick=async ev=>{
     const g=id=>document.getElementById(id).value;
     const pessoa=g('at-resp'), sigla=SIGLA_POR_PESSOA[pessoa]||i.papel;
@@ -2140,8 +2142,14 @@ function renderCliente(v){
   const antecip=its.filter(i=>i.cls==='feito'&&i.prev&&i.feito&&dt(i.feito)<dt(i.prev)).length;
   const qwF=its.filter(i=>i.tipo==='QW'&&i.cls==='feito'), qwT=its.filter(i=>i.tipo==='QW');
 
-  const abas=[['etapas','Etapas'],['lista','Lista'],['kanban','Kanban'],['gantt','Gantt'],['celebracoes',`Celebrações (${qwF.length}/${qwT.length})`],['informacoes','Informações'],['metas','Metas extras'],['historico','Histórico']];
+  // "📣 Mensagens prontas" (MF-M2) — visível só admin/cs, mesma régua de
+  // podeCriarTarefa (aplicaVisibilidadeCargo). Em modo local (sem PERFIL) é
+  // sempre visível, igual ao padrão já usado pra tela Configurações.
+  const podeVerMarcos = !MODO_APP || (PERFIL && (PERFIL.cargo==='admin'||PERFIL.cargo==='cs'));
+  if(!podeVerMarcos && ABA_CLI==='marcos') ABA_CLI='etapas';
+  const abas=[['etapas','Etapas'], ...(podeVerMarcos?[['marcos','📣 Mensagens']]:[]), ['lista','Lista'],['kanban','Kanban'],['gantt','Gantt'],['celebracoes',`Celebrações (${qwF.length}/${qwT.length})`],['informacoes','Informações'],['metas','Metas extras'],['historico','Histórico']];
   let corpo='';
+  if(ABA_CLI==='marcos' && podeVerMarcos){ garantirMarcosCarregados(c.aba); corpo=renderMensagensProntas(c, its); }
   if(ABA_CLI==='etapas'){
     corpo=c.fases.map((fa,ix)=>{
       const ff=fa.itens.filter(i=>i.cls==='feito').length;
@@ -2296,6 +2304,280 @@ function fitem(c,i){
   return `<div class="fitem ${done?'done':''}" data-row="${i.row}" onclick="abreAtv('${esc(c.aba)}',${i.row})">
     <div class="tit">${i.tipo==='QW'?'★ ':''}${esc(i.ativ)}<small>${esc(i.tempo)}${i.prev?' · '+fmtCurto(dt(i.prev)):''}${done&&i.feito?' · feito '+fmtCurto(dt(i.feito)):''}</small></div>
     <span class="fx"><span class="resp"><span class="mini">${ini(i.pessoas[0]||'?')}</span>${esc(i.pessoas[0]||'')}</span>${pillSt(i)}${syncBadge}</span></div>`;
+}
+
+// =====================================================================
+// MF-M2 — MOTOR DE MARCOS ("📣 Mensagens prontas") + ARQUIVOS (Storage)
+// ---------------------------------------------------------------------
+// Regra de ouro da casa (plano §0.2): a GERAÇÃO do dado e da mensagem
+// automatiza tudo que der; o ENVIO no grupo é SEMPRE humano — todo botão
+// aqui é "copiar" ou "marcar enviada" DEPOIS que o CS colou a mensagem no
+// grupo. Nada aqui dispara nada pra fora sozinho.
+//
+// Registro do marco (acao:'marco') passa pelo gasSave — a MESMA porta única
+// de escrita de sempre — então o intercept de MODO_TREINO já é automático
+// (gasSave finge sucesso sem chamar a API real; ver função gasSave acima).
+// Upload/download de arquivo NÃO passa pelo gasSave (é supabase-js direto
+// contra o Storage), por isso uploadParaBucket() e baixarArquivo() chamam
+// treinoBloqueia() explicitamente — sem isso, treino vazaria escrita real
+// pro bucket de produção.
+// =====================================================================
+
+// ---- MSGS_TEMP: guarda o texto de cada mensagem pronta pra copiar sem
+// embutir texto livre (acento, aspas, quebra de linha) dentro de atributo
+// onclick="" — só a CHAVE viaja pro HTML, nunca o texto. ----
+let MSGS_TEMP = {};
+function copiarTexto(txt, btn){
+  if(!txt) return;
+  if(navigator.clipboard) navigator.clipboard.writeText(txt);
+  if(btn){ const o=btn.textContent; btn.textContent='✓ Copiado'; setTimeout(()=>{btn.textContent=o;},1400); }
+}
+
+// ---- cache de marcos já registrados por cliente (aba -> Set(marco)) ----
+let MARCOS_CACHE = {};
+let MARCOS_CARREGANDO = new Set();
+function garantirMarcosCarregados(aba){
+  if(MARCOS_CACHE[aba] || MARCOS_CARREGANDO.has(aba) || !sb || !SESSAO || MODO_TREINO) return;
+  MARCOS_CARREGANDO.add(aba);
+  sb.from('marcos').select('marco').eq('cliente_aba', aba).then(({data,error})=>{
+    MARCOS_CARREGANDO.delete(aba);
+    const s = new Set();
+    if(error) console.error('garantirMarcosCarregados:', error.message);
+    else if(data) data.forEach(r=>s.add(r.marco));
+    MARCOS_CACHE[aba] = s;
+    if(CLI===aba && ABA_CLI==='marcos') render();
+  });
+}
+async function registrarMarco(aba, marco, agregados, btn){
+  const res = await gasSave({acao:'marco', aba, marco, agregados}, btn);
+  if(!res) return;
+  if(!MARCOS_CACHE[aba]) MARCOS_CACHE[aba] = new Set();
+  MARCOS_CACHE[aba].add(marco);
+  render();
+}
+
+// ---- streak "etapa X de 7" — mapa por TEXTO da atividade, tolerante a
+// variação entre o modelo antigo e o Modelo Sofia SaaS (§MF-M2 do plano). ----
+const STREAK_ETAPAS = [
+  {n:1, re:/boas.?vindas/i, msg:nome=>`Seja muito bem-vindo(a) à Hawki, equipe da ${nome}! 🎉\n\nEtapa 1 de 7: acabamos de dar o start na estruturação da sua Sofia. Em breve chegam os próximos passos.`},
+  {n:2, re:/call de onboarding realizada|kickoff realizado|kickoff fechado/i, msg:nome=>`Etapa 2 de 7 concluída! ✅\n\nA call de onboarding da ${nome} foi realizada e o escopo está confirmado por escrito. Agora é hora de montar a máquina.`},
+  {n:3, re:/m[aá]quina montada/i, msg:nome=>`Etapa 3 de 7! 🔧\n\nA máquina da ${nome} já está montada na bancada: pipeline, automações e base de conhecimento no lugar. Ainda ninguém vê nada, mas os bastidores já estão prontos.`},
+  {n:4, re:/laudo verde/i, msg:nome=>`Etapa 4 de 7! 🟢\n\nLaudo verde da ${nome}: os testes confirmaram que a Sofia está funcionando de ponta a ponta.`},
+  {n:5, re:/go.?live/i, msg:nome=>`Etapa 5 de 7! 🚀\n\nGo live da ${nome}: a Sofia está no ar e pronta pra atender pacientes de verdade.`},
+  {n:6, re:/primeiro de verdade|primeiro agendamento real/i, msg:nome=>`Etapa 6 de 7! 🙌\n\nPrimeiro agendamento real da ${nome} confirmado no sistema. A máquina já está gerando resultado de verdade.`},
+  {n:7, re:/placar dos 30 dias|balan[cç]o dos 30 dias/i, msg:nome=>`Etapa 7 de 7! 🏆\n\n30 dias fechados pra ${nome} e o placar comemorado. Chegamos ao fim da jornada de implantação.`},
+];
+function detectaEtapas(its){
+  return STREAK_ETAPAS.map(e=>{
+    const item = its.find(i=>e.re.test(i.ativ) && i.cls==='feito');
+    return {n:e.n, done:!!item, msg:e.msg};
+  });
+}
+
+function renderMensagensProntas(c, its){
+  const etapas = detectaEtapas(its);
+  const marcosFeitos = MARCOS_CACHE[c.aba] || new Set();
+  const etapaAtual = etapas.filter(e=>e.done).reduce((mx,e)=>Math.max(mx,e.n),0);
+  const dots = etapas.map(e=>`<span class="mini" style="background:${e.done?'var(--laranja)':'var(--panel2)'};color:${e.done?'#1a1006':'var(--faint)'};border-color:${e.done?'var(--laranja)':'var(--border)'}" title="Etapa ${e.n} de 7${e.done?' · concluída':''}">${e.n}</span>`).join(' ');
+  const pendentes = etapas.filter(e=>e.done && !marcosFeitos.has('streak_'+e.n));
+  const jaEnviadas = etapas.filter(e=>e.done && marcosFeitos.has('streak_'+e.n));
+
+  const cardStreak = pendentes.length
+    ? pendentes.map(e=>{
+        const texto = e.msg(c.nome);
+        MSGS_TEMP['streak_'+e.n] = texto;
+        return `<div class="box" style="margin-bottom:12px"><h2>★ Etapa ${e.n} de 7 — pronta pra enviar</h2>
+          <div class="mnote" style="white-space:pre-wrap">${esc(texto)}</div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn sec" onclick="copiarTexto(MSGS_TEMP['streak_${e.n}'], this)">Copiar</button>
+            <button class="btn" onclick="registrarMarco('${esc(c.aba)}','streak_${e.n}',{etapa:${e.n}}, this)">Marcar enviada</button>
+          </div></div>`;
+      }).join('')
+    : `<div class="box"><div class="mnote">${etapaAtual? 'Todas as etapas concluídas até agora já foram marcadas como enviadas.' : 'Nenhuma etapa concluída ainda — a mensagem aparece aqui assim que a primeira atividade da jornada for marcada feita.'}</div></div>`;
+
+  return `<div class="box" style="margin-bottom:12px"><h2>★ Streak — etapa ${etapaAtual} de 7</h2>
+    <div style="display:flex;gap:6px;margin:8px 0">${dots}</div>
+    <div class="mnote">Contador automático a partir das atividades já concluídas deste cliente (tolerante a variação de texto entre modelo antigo e Sofia SaaS).</div>
+    ${jaEnviadas.length? `<div class="mnote" style="margin-top:6px">✓ Já enviadas: etapa${jaEnviadas.length>1?'s':''} ${jaEnviadas.map(e=>e.n).join(', ')}.</div>`:''}
+  </div>
+  ${cardStreak}
+
+  <div class="box" style="margin-top:12px"><h2>💰 Dinheiro parado</h2>
+    <div class="mnote">Sobe a lista de reativação do cliente pra gerar a contagem. Sem lista, não gera número nenhum — número emprestado de outra clínica não existe aqui por construção.</div>
+    <div class="mgrid" style="margin-top:8px">
+      <div><label>Lista (CSV)</label><input type="file" id="dp-arquivo" accept=".csv,text/csv"></div>
+      <div><label>Ticket médio (R$)</label><input type="number" id="dp-ticket" min="0" step="1" placeholder="Ex: 1500"></div>
+      <div class="mfull" style="display:flex;align-items:center;gap:8px"><input id="dp-cabecalho" type="checkbox" checked style="width:auto"><label style="margin:0;text-transform:none;font-size:13px;color:var(--text)">A 1ª linha do CSV é cabeçalho (não conta como paciente)</label></div>
+    </div>
+    <button class="btn sec" style="margin-top:8px" onclick="analisarListaDinheiroParado('${esc(c.aba)}')">Analisar lista</button>
+    <div id="dp-resultado"></div>
+    <div class="mnote" style="margin-top:8px">Formato aceito: só CSV. XLSX não é lido no navegador nesta versão (evita depender de biblioteca externa) — exporte a lista como CSV antes de subir.</div>
+  </div>
+
+  <div class="box" style="margin-top:12px"><h2>🛠 Bancada (D+3)</h2>
+    <div class="mnote">Sem fonte automática ainda (a fonte Sofia entra na MF-M4) — mensagem pronta + anexe o print do funil na atividade correspondente (aba Etapas, ícone 📎).</div>
+    <div class="mfull" style="margin-top:8px"><label>Nota (opcional)</label><input id="bc-nota" placeholder="Ex: pipeline com 3 automações, KB e guardrail no lugar" maxlength="160"></div>
+    <button class="btn sec" style="margin-top:8px" onclick="gerarBancada('${esc(c.aba)}')">Gerar mensagem</button>
+    <div id="bc-resultado"></div>
+  </div>
+
+  ${[['30','Placar 30 dias'],['60','Placar acumulado 60 dias']].map(([p,titulo])=>`
+  <div class="box" style="margin-top:12px"><h2>🏆 ${titulo}</h2>
+    <div class="mnote">Campos manuais enquanto não há fonte automática (MF-M4 liga os números da Sofia sozinha).</div>
+    <div class="mgrid" style="margin-top:8px">
+      <div><label>Agendamentos verificados</label><input type="number" id="pl${p}-agendamentos" min="0" step="1"></div>
+      <div><label>Conversas</label><input type="number" id="pl${p}-conversas" min="0" step="1"></div>
+      <div><label>Dinheiro de volta na mesa (R$)</label><input type="number" id="pl${p}-dinheiro" min="0" step="1"></div>
+    </div>
+    <button class="btn sec" style="margin-top:8px" onclick="gerarPlacar('${esc(c.aba)}','${p}')">Gerar mensagem</button>
+    <div id="pl${p}-resultado"></div>
+  </div>`).join('')}`;
+}
+
+function contaLinhasCsv(texto, temCabecalho){
+  const linhas = texto.split(/\r\n|\r|\n/).filter(l=>l.trim().length>0);
+  let n = linhas.length;
+  if(temCabecalho && n>0) n -= 1;
+  return Math.max(0, n);
+}
+const fmtBRL = n => Number(n).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+
+async function analisarListaDinheiroParado(aba){
+  const fileInput=document.getElementById('dp-arquivo'), ticketInput=document.getElementById('dp-ticket'),
+    cabInput=document.getElementById('dp-cabecalho'), out=document.getElementById('dp-resultado');
+  const file=fileInput.files[0], ticket=Number(ticketInput.value);
+  if(!file){ out.innerHTML='<div class="aviso">Escolha o arquivo CSV da lista antes de analisar.</div>'; return; }
+  if(!ticket||ticket<=0){ out.innerHTML='<div class="aviso">Preencha o ticket médio (R$) antes de analisar.</div>'; return; }
+  const texto = await file.text();
+  const contagem = contaLinhasCsv(texto, cabInput.checked);
+  if(contagem<=0){ out.innerHTML='<div class="aviso">Não encontrei nenhuma linha de paciente no CSV (só cabeçalho?). Confira o arquivo.</div>'; return; }
+  const total = contagem*ticket;
+  const c = D.clientes.find(x=>x.aba===aba);
+  const textoMsg = `Boa notícia, equipe da ${c.nome}! 💰\n\nCruzamos a lista de pacientes parados com o ticket médio de vocês: ${contagem} pacientes × ${fmtBRL(ticket)} = ${fmtBRL(total)} de volta na mesa (não é receita fechada — é o potencial que a Sofia vai trabalhar).`;
+  MSGS_TEMP['dinheiro_parado'] = textoMsg;
+
+  let uploadHtml;
+  if(MODO_TREINO){
+    uploadHtml = '<div class="mnote">🎓 Modo treino — o arquivo não seria realmente enviado ao Storage.</div>';
+  } else if(MODO_APP && sb && SESSAO){
+    const path = 'lista/'+aba+'/'+Date.now()+'_'+file.name.replace(/[^a-zA-Z0-9_.-]/g,'_');
+    const enviado = await uploadParaBucket(path, file);
+    uploadHtml = enviado
+      ? `<div class="mnote">✓ Arquivo enviado pro Storage privado (${esc(path)}).</div>`
+      : '<div class="aviso">Arquivo NÃO enviado ao Storage (confira o login) — a mensagem abaixo já foi gerada mesmo assim.</div>';
+  } else {
+    uploadHtml = '<div class="mnote">Upload do arquivo pro Storage só funciona no app publicado (login Supabase). Em modo local o cálculo funciona, mas o arquivo não fica guardado.</div>';
+  }
+  out.innerHTML = `<div class="aviso" style="margin-top:10px"><b>${contagem}</b> pacientes × <b>${fmtBRL(ticket)}</b> = <b>${fmtBRL(total)}</b></div>
+    ${uploadHtml}
+    <div class="mnote" style="white-space:pre-wrap;margin-top:8px">${esc(textoMsg)}</div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn sec" onclick="copiarTexto(MSGS_TEMP['dinheiro_parado'], this)">Copiar</button>
+      <button class="btn" onclick="registrarMarco('${esc(aba)}','dinheiro_parado',{contagem:${contagem},ticket_medio:${ticket},total:${total}}, this)">Marcar enviada</button>
+    </div>`;
+}
+
+function gerarBancada(aba){
+  const nota = document.getElementById('bc-nota').value.trim();
+  const c = D.clientes.find(x=>x.aba===aba);
+  const texto = `Etapa 3 de 7! 🔧\n\nA máquina da ${c.nome} já está montada na bancada${nota? ': '+nota:''}. Ainda ninguém vê nada, mas os bastidores já estão prontos. Print em anexo.`;
+  MSGS_TEMP['bancada'] = texto;
+  document.getElementById('bc-resultado').innerHTML = `<div class="mnote" style="white-space:pre-wrap;margin-top:8px">${esc(texto)}</div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn sec" onclick="copiarTexto(MSGS_TEMP['bancada'], this)">Copiar</button>
+      <button class="btn" onclick="registrarBancada('${esc(aba)}', this)">Marcar enviada</button>
+    </div>`;
+}
+function registrarBancada(aba, btn){
+  const nota = document.getElementById('bc-nota').value.trim();
+  registrarMarco(aba, 'bancada', {nota}, btn);
+}
+
+function gerarPlacar(aba, periodo){
+  const g=id=>Number(document.getElementById(id).value)||0;
+  const agendamentos=g('pl'+periodo+'-agendamentos'), conversas=g('pl'+periodo+'-conversas'), dinheiro=g('pl'+periodo+'-dinheiro');
+  const c = D.clientes.find(x=>x.aba===aba);
+  const texto = periodo==='30'
+    ? `Etapa 7 de 7! 🏆\n\n30 dias fechados pra ${c.nome}: ${agendamentos} agendamentos verificados, ${conversas} conversas e ${fmtBRL(dinheiro)} de volta na mesa (não é receita fechada). Placar comemorado — chegamos ao fim da jornada de implantação.`
+    : `Placar acumulado dos 60 dias! 📊\n\n${c.nome} já soma ${agendamentos} agendamentos verificados, ${conversas} conversas e ${fmtBRL(dinheiro)} de volta na mesa nos 60 dias.`;
+  MSGS_TEMP['placar_'+periodo] = texto;
+  document.getElementById('pl'+periodo+'-resultado').innerHTML = `<div class="mnote" style="white-space:pre-wrap;margin-top:8px">${esc(texto)}</div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn sec" onclick="copiarTexto(MSGS_TEMP['placar_${periodo}'], this)">Copiar</button>
+      <button class="btn" onclick="registrarPlacar('${esc(aba)}','${periodo}', this)">Marcar enviada</button>
+    </div>`;
+}
+function registrarPlacar(aba, periodo, btn){
+  const g=id=>Number(document.getElementById(id).value)||0;
+  const agregados = {agendamentos:g('pl'+periodo+'-agendamentos'), conversas:g('pl'+periodo+'-conversas'), dinheiro_mesa:g('pl'+periodo+'-dinheiro')};
+  registrarMarco(aba, 'placar_'+periodo, agregados, btn);
+}
+
+// ---- Arquivos (Storage privado `arquivos`) — upload direto com o JWT do
+// usuário (nunca service key no front), download autenticado (.download()),
+// nunca URL pública. Guardrail: intercepta MODO_TREINO no funil (upload e
+// download), então nenhum caminho que chame estas duas funções escapa. ----
+async function uploadParaBucket(path, file, btn){
+  if(treinoBloqueia('Enviar arquivo')) return null;
+  if(!sb || !SESSAO){ alert('Upload de arquivo exige login no app publicado (Supabase).'); return null; }
+  const old = btn? btn.textContent:''; if(btn){btn.textContent='Enviando…'; btn.disabled=true;}
+  const {data, error} = await sb.storage.from('arquivos').upload(path, file, {upsert:false});
+  if(btn){btn.textContent=old; btn.disabled=false;}
+  if(error){ toast('Não enviou: '+error.message, 'erro'); return null; }
+  toast('Arquivo enviado', 'sucesso');
+  return data;
+}
+async function baixarArquivo(path, nomeArquivo){
+  if(treinoBloqueia('Baixar arquivo')) return;
+  if(!sb || !SESSAO){ alert('Baixar arquivo exige login no app publicado (Supabase).'); return; }
+  const {data, error} = await sb.storage.from('arquivos').download(path);
+  if(error){ toast('Não baixou: '+error.message, 'erro'); return; }
+  const url = URL.createObjectURL(data);
+  const a = document.createElement('a'); a.href=url; a.download=nomeArquivo||path.split('/').pop();
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  // log de download — RLS só deixa o próprio usuário inserir a própria linha
+  sb.from('arquivo_log').insert({usuario_id:SESSAO.user.id, path}).then(({error:e2})=>{ if(e2) console.error('arquivo_log insert:', e2.message); });
+}
+
+// ---- Anexo de evidência por atividade (pedido do Adão) — bloco no modal
+// de atividade (abreAtv), visível só admin/cs. ----
+function podeVerArquivos(){ return !MODO_APP || (PERFIL && (PERFIL.cargo==='admin'||PERFIL.cargo==='cs')); }
+function blocoAnexosHtml(){
+  if(!podeVerArquivos()) return '';
+  const semLogin = !MODO_APP || !sb || !SESSAO;
+  return `<div class="box" style="margin-top:14px"><h2>📎 Anexos de evidência</h2>
+    <div id="ev-lista" class="mnote">Carregando anexos…</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+      <input type="file" id="ev-arquivo" accept="image/*,.pdf">
+      <button class="btn sec" onclick="anexarEvidencia(this)">Anexar</button>
+    </div>
+    ${semLogin? '<div class="mnote" style="margin-top:6px">Upload/download de anexo só funciona no app publicado (login Supabase).</div>':''}
+  </div>`;
+}
+async function carregaAnexos(aba, row){
+  const el = document.getElementById('ev-lista');
+  if(!el) return;
+  if(MODO_TREINO){ el.innerHTML='🎓 Modo treino — anexos não são carregados (cliente fictício).'; return; }
+  if(!sb || !SESSAO){ el.innerHTML='Sem login Supabase — anexos indisponíveis neste modo.'; return; }
+  const prefixo = 'evidencia/'+aba+'/'+row+'/';
+  const {data, error} = await sb.storage.from('arquivos').list(prefixo, {limit:50, sortBy:{column:'created_at',order:'desc'}});
+  if(error){ el.innerHTML='Erro ao listar anexos: '+esc(error.message); return; }
+  if(!data || !data.length){ el.innerHTML='Nenhum anexo ainda.'; return; }
+  el.innerHTML = data.map(f=>`<div class="lin" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0"><span>${esc(f.name)}</span><button class="btn sec" style="padding:2px 8px;font-size:11px" onclick="baixarArquivo('${esc(prefixo+f.name)}','${esc(f.name)}')">Baixar</button></div>`).join('');
+}
+async function anexarEvidencia(btn){
+  if(!MODAL_ATV_ABERTO) return;
+  const {aba, row} = MODAL_ATV_ABERTO;
+  if(MODO_TREINO){ treinoBloqueia('Anexar evidência'); return; }
+  if(!sb || !SESSAO){ alert('Upload exige login no app publicado.'); return; }
+  const input = document.getElementById('ev-arquivo');
+  const file = input.files[0];
+  if(!file){ alert('Escolha um arquivo (imagem ou PDF) antes de anexar.'); return; }
+  const path = 'evidencia/'+aba+'/'+row+'/'+Date.now()+'_'+file.name.replace(/[^a-zA-Z0-9_.-]/g,'_');
+  const ok = await uploadParaBucket(path, file, btn);
+  input.value='';
+  if(ok) carregaAnexos(aba, row);
 }
 
 if(MODO_APP){ iniciarApp(); } else { render(); checaTour(); }

@@ -49,6 +49,7 @@ var NOME_ABA_MODELO_SOFIA = 'Modelo Sofia';
 var NOME_ABA_MODELO_TRAFEGO = 'Modelo Tráfego';
 var NOME_ABA_MODELO_SAAS = 'Modelo Sofia SaaS';
 var NOME_ABA_REGISTRO = 'Registro de Ativação';
+var NOME_ABA_MARCOS = 'Marcos'; // MF-M2 — registro dos marcos gerados (streak, dinheiro parado, bancada, placar)
 var PREFIXO_ABA_CLIENTE = 'Cliente – ';
 var LARGURA_COL_ATIVIDADE = 420;
 var LARGURA_COL_PADRAO_DIREITA = 130;
@@ -800,7 +801,7 @@ var SUPABASE_ANON_KEY = 'sb_publishable_fD2RW8rAnJgp1XkzRpnZcQ_i0MnkfCZ';
 function _validaSb_(p) {
   if (!p.sb_token) {
     if (p.k_local === K_LOCAL_TOKEN) {
-      return { ok: true, cargo: 'admin', erro: null }; // modo local: segredo local bateu
+      return { ok: true, cargo: 'admin', erro: null, quem: 'admin (local)' }; // modo local: segredo local bateu
     }
     return { ok: false, cargo: null, erro: 'modo local exige k_local; modo app exige login (sb_token)' };
   }
@@ -814,7 +815,7 @@ function _validaSb_(p) {
     if (!user || !user.id) return { ok: false, cargo: null, erro: 'sessão sem usuário' };
 
     var rp = UrlFetchApp.fetch(
-      SUPABASE_URL + '/rest/v1/profiles?id=eq.' + encodeURIComponent(user.id) + '&select=aprovado,cargo',
+      SUPABASE_URL + '/rest/v1/profiles?id=eq.' + encodeURIComponent(user.id) + '&select=aprovado,cargo,nome',
       { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + p.sb_token }, muteHttpExceptions: true }
     );
     if (rp.getResponseCode() >= 300) return { ok: false, cargo: null, erro: 'não conseguiu conferir seu perfil' };
@@ -825,7 +826,9 @@ function _validaSb_(p) {
     if (perfil.cargo !== 'admin' && perfil.cargo !== 'cs') {
       return { ok: false, cargo: perfil.cargo, erro: 'seu cargo (' + perfil.cargo + ') não tem permissão de escrita' };
     }
-    return { ok: true, cargo: perfil.cargo, erro: null };
+    // 'quem' é usado só pro registro do marco (_registraMarco_, MF-M2) — nome
+    // ou email de quem gerou a mensagem, nunca dado de cliente/paciente.
+    return { ok: true, cargo: perfil.cargo, erro: null, quem: perfil.nome || user.email || 'cs' };
   } catch (err) {
     return { ok: false, cargo: null, erro: 'falha ao validar sessão: ' + err };
   }
@@ -1040,6 +1043,124 @@ function _novaTarefa_(p, sh, sbCheck) {
 }
 
 // =====================================================================
+// MOTOR DE MARCOS (MF-M2) — ação 'marco' do doPost. Registra que uma
+// mensagem pronta (streak, dinheiro parado, bancada, placar) foi gerada e
+// copiada pelo CS/Gestor de Contas — NUNCA dispara nada pra fora (o envio
+// no grupo é sempre humano, regra dura do plano §0.2). Grava na aba
+// "Marcos" (Data | Cliente | Marco | Agregados | Por) + espelho best-effort
+// em public.marcos via service key.
+//
+// REGRA DURA (§ RESTRIÇÕES do kickoff da MF-M2): dado de paciente NUNCA
+// entra neste payload — só agregados. Por isso 'marco' e 'agregados' são
+// validados contra uma whitelist FECHADA (nunca aceita texto livre solto);
+// qualquer chave fora do schema do marco é rejeitada, não só ignorada —
+// senão um payload "emprestado" com campo estranho passaria batido.
+// =====================================================================
+var MARCOS_VALIDOS_ = {
+  'streak_1': 1, 'streak_2': 1, 'streak_3': 1, 'streak_4': 1, 'streak_5': 1, 'streak_6': 1, 'streak_7': 1,
+  'dinheiro_parado': 1, 'bancada': 1, 'placar_30': 1, 'placar_60': 1
+};
+
+// Schema de agregados por marco: 'num' = número finito 0..10_000_000;
+// 'txt' = texto curto sanitizado (via _sanitizaTexto_, sem fórmula/quebra de
+// linha). Nenhum campo aqui é dado de paciente — só contagem/valor/nota curta.
+var AGREGADOS_SCHEMA_ = {
+  dinheiro_parado: { contagem: 'num', ticket_medio: 'num', total: 'num' },
+  bancada: { nota: 'txt' },
+  placar_30: { agendamentos: 'num', conversas: 'num', dinheiro_mesa: 'num' },
+  placar_60: { agendamentos: 'num', conversas: 'num', dinheiro_mesa: 'num' },
+};
+function _schemaDoMarco_(marco) {
+  if (AGREGADOS_SCHEMA_[marco]) return AGREGADOS_SCHEMA_[marco];
+  if (/^streak_[1-7]$/.test(marco)) return { etapa: 'num' };
+  return null;
+}
+
+/** Valida e limpa `agregados` contra o schema FECHADO do marco. Rejeita (não ignora) qualquer chave fora do schema. */
+function _validaAgregados_(marco, agregados) {
+  var schema = _schemaDoMarco_(marco);
+  if (!schema) return { ok: false, erro: 'marco sem schema de agregados: ' + marco };
+  var entrada = (agregados && typeof agregados === 'object' && !Array.isArray(agregados)) ? agregados : {};
+
+  var chavesEntrada = Object.keys(entrada);
+  for (var j = 0; j < chavesEntrada.length; j++) {
+    if (!schema[chavesEntrada[j]]) return { ok: false, erro: 'campo não permitido neste marco: ' + chavesEntrada[j] };
+  }
+
+  var limpo = {};
+  var chaves = Object.keys(schema);
+  for (var i = 0; i < chaves.length; i++) {
+    var k = chaves[i], tipo = schema[k];
+    var v = entrada[k];
+    if (v === null || v === undefined || v === '') continue; // campo opcional vazio: ok
+    if (tipo === 'num') {
+      var n = Number(v);
+      if (!isFinite(n) || n < 0 || n > 10000000) return { ok: false, erro: 'campo numérico inválido: ' + k };
+      limpo[k] = n;
+    } else if (tipo === 'txt') {
+      var t = _sanitizaTexto_(v, 160);
+      if (!t.ok) return { ok: false, erro: 'campo de texto inválido (' + k + '): ' + t.erro };
+      limpo[k] = t.valor;
+    }
+  }
+  return { ok: true, valor: limpo };
+}
+
+/** Acha (ou cria, uma única vez) a aba "Marcos" com o cabeçalho fixo. */
+function _achaOuCriaAbaMarcos_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(NOME_ABA_MARCOS);
+  if (!sh) {
+    sh = ss.insertSheet(NOME_ABA_MARCOS);
+    sh.getRange(1, 1, 1, 5).setValues([['Data', 'Cliente', 'Marco', 'Agregados', 'Por']]);
+    sh.setFrozenRows(1);
+    sh.getRange(1, 1, 1, 5).setFontWeight('bold');
+    sh.setColumnWidth(2, 220);
+    sh.setColumnWidth(4, 320);
+  }
+  return sh;
+}
+
+/**
+ * Ação 'marco' do doPost: registra que uma mensagem pronta foi gerada/copiada.
+ * Não-admin (cs): a permissão herda a de LEITURA (RLS) do cliente — mesma
+ * régua de _novaTarefa_ (linha ~987), reconsultando o Supabase com o JWT do
+ * próprio usuário antes de gravar.
+ */
+function _registraMarco_(p, sh, sbCheck) {
+  var marco = String(p.marco || '').trim();
+  if (!MARCOS_VALIDOS_[marco]) return _json({ ok: false, erro: 'marco inválido: ' + marco });
+
+  if (sbCheck.cargo !== 'admin') {
+    if (!_clienteVisivelParaEscrita_(p.aba, p.sb_token)) {
+      return _json({ ok: false, erro: 'acesso negado: este cliente não é do seu escopo' });
+    }
+  }
+
+  var v = _validaAgregados_(marco, p.agregados);
+  if (!v.ok) return _json({ ok: false, erro: v.erro });
+
+  var nomeCli = String(sh.getRange('B1').getValue() || String(p.aba).replace(PREFIXO_ABA_CLIENTE, ''));
+  var quem = sbCheck.quem || sbCheck.cargo || 'desconhecido';
+
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(15000)) return _json({ ok: false, erro: 'planilha ocupada, tente de novo' });
+  try {
+    var abaMarcos = _achaOuCriaAbaMarcos_();
+    abaMarcos.appendRow([new Date(), nomeCli, marco, JSON.stringify(v.valor), quem]);
+    SpreadsheetApp.flush();
+    var esp = _supabaseInsert_('marcos', [{
+      cliente_aba: p.aba, marco: marco, payload: v.valor, criado_por: quem
+    }]);
+    return _json({ ok: true, espelho: esp.ok ? 'ok' : esp.erro });
+  } catch (err) {
+    return _json({ ok: false, erro: String(err) });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// =====================================================================
 // ESPELHAMENTO SUPABASE (tempo real) — Fase F6. O app.html publicado NÃO lê
 // a planilha, lê public.clientes/public.atividades no Supabase (RLS por
 // cargo). Sem isto, o espelho só era atualizado por um cron 3x/dia — cliente
@@ -1202,6 +1323,40 @@ function _supabaseUpsert_(tabela, onConflict, linhas) {
       // trazer nome de policy/constraint) — foi o que permitiu achar o
       // "Forbidden use of secret API key in browser" em 20/08, que só aparecia
       // aqui porque a UI de execuções do Apps Script não abre o log.
+      var msg = '';
+      try { msg = (JSON.parse(r.getContentText()) || {}).message || ''; } catch (e2) { msg = ''; }
+      return { ok: false, erro: 'falhou: HTTP ' + code + (msg ? ' [' + String(msg).slice(0, 80) + ']' : '') };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, erro: 'falhou: ' + err };
+  }
+}
+
+/**
+ * Insert puro no PostgREST (sem upsert/on_conflict) — usado por public.marcos,
+ * que é um LOG de eventos (cada 'marco' registrado é uma linha nova, nunca
+ * substitui a anterior). Mesma defesa de chave/erro de _supabaseUpsert_
+ * (nunca lança; HTTP/erro vira {ok:false,erro} pro chamador decidir).
+ */
+function _supabaseInsert_(tabela, linhas) {
+  var key = _props().getProperty('SUPABASE_SERVICE_KEY');
+  if (!key) return { ok: false, erro: 'sem_chave' };
+  if (!linhas || !linhas.length) return { ok: true };
+  try {
+    var ehJwt = key.indexOf('eyJ') === 0;
+    var cab = { apikey: key };
+    if (ehJwt) cab.Authorization = 'Bearer ' + key;
+    var r = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/' + tabela, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: cab,
+      payload: JSON.stringify(linhas),
+      muteHttpExceptions: true,
+    });
+    var code = r.getResponseCode();
+    if (code >= 300) {
+      Logger.log('_supabaseInsert_ falhou (' + tabela + '): HTTP ' + code + ' ' + r.getContentText().slice(0, 500));
       var msg = '';
       try { msg = (JSON.parse(r.getContentText()) || {}).message || ''; } catch (e2) { msg = ''; }
       return { ok: false, erro: 'falhou: HTTP ' + code + (msg ? ' [' + String(msg).slice(0, 80) + ']' : '') };
@@ -1455,6 +1610,9 @@ function doPost(e) {
     if (p.acao === 'nova_tarefa') {
       return _novaTarefa_(p, sh, sbCheck);
     }
+    if (p.acao === 'marco') {
+      return _registraMarco_(p, sh, sbCheck);
+    }
     if (p.acao === 'cel') {
       // célula de metadado do cabeçalho: H1-H3 (aniv/GT/dev), K1-K2 (info/obs)
       if (sbCheck.cargo !== 'admin') return _json({ ok: false, erro: 'acesso negado: ação restrita a admin' });
@@ -1677,4 +1835,95 @@ function _instanciarViaApi_(p) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// =====================================================================
+// EXPURGO DO ARQUIVO BRUTO (MF-M2, guardrail 3 do §1 do plano) — apaga só
+// os arquivos do prefixo `lista/` (a lista de reativação que o CS upou) com
+// mais de 90 dias. NUNCA toca em `evidencia/` (fotos/prints de atividade —
+// ficam pra sempre, não são o dado sensível em questão). Os AGREGADOS (a
+// mensagem "dinheiro parado" já gerada) e o registro em public.marcos/aba
+// Marcos ficam pra sempre — só o arquivo bruto (a lista com nome/telefone
+// de paciente) expira.
+//
+// ACIONADOR — instalação manual (precisa de humano; não existe jeito de
+// instalar acionador instalável só com código, mesma limitação do
+// onEditCentral — ver topo do arquivo):
+//   1. Abrir esta planilha > menu Extensões > Apps Script.
+//   2. No editor, clicar no ícone de relógio "Acionadores" (barra lateral
+//      esquerda).
+//   3. "+ Adicionar acionador" (canto inferior direito).
+//   4. Configurar:
+//        Função a executar: expurgarListasAntigas
+//        Implantação: Head
+//        Fonte do evento: Baseado em tempo
+//        Tipo de acionador baseado em tempo: Timer diário
+//        Horário: qualquer janela de madrugada (ex.: 2h–3h)
+//   5. Salvar — autorizar o acesso pedido (UrlFetchApp pro Storage do
+//      Supabase; precisa da SUPABASE_SERVICE_KEY já configurada nas Script
+//      Properties — mesma chave que _supabaseUpsert_/_supabaseInsert_ usam).
+//   6. Se a planilha for duplicada/copiada, repetir o passo a passo na cópia
+//      (o acionador não é copiado junto).
+// Sem este passo manual, a função fica pronta e correta mas NUNCA roda
+// sozinha — é exatamente a mesma limitação documentada pro onEditCentral.
+// =====================================================================
+var PREFIXO_LISTA_ = 'lista/';
+var BUCKET_ARQUIVOS_ = 'arquivos';
+var EXPURGO_DIAS_ = 90;
+
+/** Lista uma "pasta" do bucket via Storage API (não é recursivo — subpastas voltam como itens sem `id`). */
+function _storageListar_(prefixo, cab) {
+  var r = UrlFetchApp.fetch(SUPABASE_URL + '/storage/v1/object/list/' + BUCKET_ARQUIVOS_, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: cab,
+    payload: JSON.stringify({ prefix: prefixo, limit: 1000, sortBy: { column: 'name', order: 'asc' } }),
+    muteHttpExceptions: true,
+  });
+  if (r.getResponseCode() >= 300) {
+    Logger.log('expurgarListasAntigas: list falhou (' + prefixo + '): HTTP ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 300));
+    return [];
+  }
+  try { return JSON.parse(r.getContentText()) || []; } catch (e) { return []; }
+}
+
+function expurgarListasAntigas() {
+  var key = _props().getProperty('SUPABASE_SERVICE_KEY');
+  if (!key) { Logger.log('expurgarListasAntigas: sem SUPABASE_SERVICE_KEY configurada (Script Properties).'); return 'sem_chave'; }
+  var ehJwt = key.indexOf('eyJ') === 0;
+  var cab = { apikey: key };
+  if (ehJwt) cab.Authorization = 'Bearer ' + key;
+
+  var corte = new Date(Date.now() - EXPURGO_DIAS_ * 86400000);
+  var aApagar = [];
+
+  var pastasCliente = _storageListar_(PREFIXO_LISTA_, cab);
+  pastasCliente.forEach(function (pasta) {
+    if (pasta.id) return; // arquivo solto direto em lista/ (não deveria existir com o path do §1) — ignora, não apaga por engano
+    var prefixoCliente = PREFIXO_LISTA_ + pasta.name + '/';
+    var arquivos = _storageListar_(prefixoCliente, cab);
+    arquivos.forEach(function (a) {
+      if (!a.id) return; // subpasta
+      var criado = a.created_at ? new Date(a.created_at) : null;
+      if (!criado || criado >= corte) return; // ainda dentro dos 90 dias
+      aApagar.push(prefixoCliente + a.name);
+    });
+  });
+
+  if (!aApagar.length) {
+    Logger.log('expurgarListasAntigas: nada a apagar (0 arquivo de lista/ com mais de ' + EXPURGO_DIAS_ + ' dias).');
+    return JSON.stringify({ apagados: 0 });
+  }
+
+  var del = UrlFetchApp.fetch(SUPABASE_URL + '/storage/v1/object/' + BUCKET_ARQUIVOS_, {
+    method: 'delete',
+    contentType: 'application/json',
+    headers: cab,
+    payload: JSON.stringify({ prefixes: aApagar }),
+    muteHttpExceptions: true,
+  });
+  var resumo = { tentados: aApagar.length, http: del.getResponseCode(), caminhos: aApagar.slice(0, 20) };
+  if (del.getResponseCode() >= 300) resumo.erro = del.getContentText().slice(0, 300);
+  Logger.log('expurgarListasAntigas: ' + JSON.stringify(resumo));
+  return JSON.stringify(resumo);
 }
