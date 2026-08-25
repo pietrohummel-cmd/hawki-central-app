@@ -445,7 +445,19 @@ function montarAba_(servico, dataAssinatura, dataKickoff, linhas, nomeCliente) {
  * pra dentro das abas; daí em diante a PLANILHA é a fonte e este dicionário só
  * serve pra semear aba nova ou reparar.
  */
+/**
+ * Correções de TEXTO de atividade: o modelo foi escrito a partir do PLANO,
+ * e algumas linhas descrevem material que a casa nunca teve (achado do
+ * Pietro em 21/08: "voz de fundador / welcome video... não temos").
+ * Chave = texto como está hoje na aba. Valor = o que o time realmente faz.
+ * migrarPapelECriterios() aplica antes de casar o critério de pronto.
+ */
+var CORRECOES_TEXTO_ = {
+  "Boas-vindas em voz de fundador + welcome video enviados (antes de qualquer cobrança)": "Mensagem de boas-vindas enviada no grupo ANTES de qualquer cobrança, com o estrategista se apresentando pelo nome, e o link do formulário de estruturação junto: link.digitalmoonbr.com/widget/survey/9oHI74HQ68SDQvrtBX39 (texto pronto no vault, 50 Specs > Templates de mensagem — onboarding)."
+};
+
 var CRITERIOS_PRONTO_ = {
+  "Mensagem de boas-vindas no grupo + formulário de estruturação enviado (antes de qualquer cobrança)": "Mensagem de boas-vindas enviada no grupo ANTES de qualquer cobrança, com o estrategista se apresentando pelo nome, e o link do formulário de estruturação junto: link.digitalmoonbr.com/widget/survey/9oHI74HQ68SDQvrtBX39 (texto pronto no vault, 50 Specs > Templates de mensagem — onboarding).",
   "3 mídias padrão criadas sem depender do cliente (GT + IA de imagem, decisão 3)": "3 mídias padrão prontas SEM depender do cliente (gestora + IA de imagem).",
   "3 áudios de treino da CRC enviados": "3 áudios entregues ao FIM da call de kickoff, com os 2 pontos obrigatórios: agendar DENTRO do painel e piso de takeover.",
   "60 dias de máquina: placar acumulado comemorado": "Placar acumulado dos 60 dias comemorado no grupo.",
@@ -570,6 +582,8 @@ function migrarPapelECriterios() {
       var verifs = sh.getRange(de, cVerif, qtd, 1).getValues();
       for (var k = 0; k < ativs.length; k++) {
         var texto = String(ativs[k][0] || '').trim();
+        var corrigido = CORRECOES_TEXTO_[texto];
+        if (corrigido) { sh.getRange(de + k, cAtiv).setValue(corrigido); texto = corrigido; resumo.textos = (resumo.textos || 0) + 1; }
         if (!texto || _ehLinhaDeFase_(texto)) continue;
         if (String(verifs[k][0] || '').trim()) continue; // nota humana: não mexe
         var criterio = CRITERIOS_PRONTO_[texto];
