@@ -391,7 +391,7 @@ html.modo-treino .topbar{top:40px}
     <div><label>Sucesso do Cliente (CS)</label><select id="nc-cs"><option>Adão</option><option>William</option><option>Pietro</option></select></div>
     <div><label>Data da reunião de onboarding</label><input id="nc-onb" type="date"></div>
     <div><label>Gestor de tráfego</label><select id="nc-gt"><option>Gestora</option><option>—</option></select></div>
-    <div><label>Tipo de serviço</label><select id="nc-tipo"><option>Sofia (IA only)</option><option>Tráfego</option><option>COMBO (Tráfego + Sofia)</option></select></div>
+    <div><label>Tipo de serviço</label><select id="nc-tipo"><option>Sofia (IA only)</option><option>Tráfego</option><option>COMBO (Tráfego + Sofia)</option><option>Sofia SaaS</option></select></div>
     <div><label>Aniversário do cliente</label><input id="nc-ani" type="date"></div>
     <div><label>Data de assinatura</label><input id="nc-ass" type="date"></div>
     <div class="mfull"><label>Observações rápidas</label><textarea id="nc-obs" placeholder="Contexto rápido do cliente, particularidades..."></textarea></div>
@@ -460,8 +460,8 @@ const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 // chamado na linha ~693: montaFiltros roda de imediato no modo local, e uma
 // const declarada mais abaixo no arquivo estouraria "acesso antes da
 // inicialização" — TDZ do JS) ----
-const SIGLA_POR_PESSOA={'Adão':'SÓC','William':'WIL','Pietro':'PIE','Gestora':'GT','Automação':'IA','Cliente':'CLI','CRC da clínica':'CRC'};
-const PAPEL_NOME={'SÓC':'Sucesso do Cliente','WIL':'William (CS)','PIE':'Pietro (exceção)','GT':'Gestor de Tráfego','IA':'Automação','CLI':'Cliente','CRC':'CRC da clínica'};
+const SIGLA_POR_PESSOA={'Adão':'CS','William':'WIL','Pietro':'PIE','Gestora':'GT','Automação':'IA','Cliente':'CLI','CRC da clínica':'CRC'};
+const PAPEL_NOME={'CS':'Sucesso do Cliente','CS':'Sucesso do Cliente','WIL':'William (CS)','PIE':'Pietro (exceção)','GT':'Gestor de Tráfego','IA':'Automação','CLI':'Cliente','CRC':'CRC da clínica'};
 // 'WIL' foi incluído na policy 'cargo_ve_papel' do Supabase em 20/08 (as duas
 // sobrecargas, texto e array — ver central/rls.sql), então tarefa designada a
 // William é visível pro cargo cs e ele consegue marcar feito. Lista liberada.
@@ -1357,21 +1357,21 @@ function dadosTreino(){
     obs:'🎓 Cliente de treino. Nada aqui é salvo de verdade.',
     fases:[
       {titulo:'FASE 00', desc:'Pré-kickoff — boas-vindas, kit de pré-requisitos, provas e agendamento do kickoff.', itens:[
-        it(101,'A+1','PP','SÓC',['Adão'],'Boas-vindas e kit de pré-requisitos enviado',-30,-29,'feito'),
-        it(102,'A+3','PP','SÓC',['Adão'],'Provas e cases enviados',-27,-27,'feito'),
+        it(101,'A+1','PP','CS',['Adão'],'Boas-vindas e kit de pré-requisitos enviado',-30,-29,'feito'),
+        it(102,'A+3','PP','CS',['Adão'],'Provas e cases enviados',-27,-27,'feito'),
         it(103,'A+5','PP','CLI',['Cliente'],'Agendamento do kickoff confirmado',-20,-20,'feito'),
       ]},
       {titulo:'FASE 01', desc:'Kickoff e montagem — one-pager, conexão, máquina montada e SMOKE.', itens:[
-        it(104,'D+0','PP','SÓC+GT',['Adão','Gestora'],'Kickoff realizado',-14,-14,'feito'),
-        it(105,'D+2','QW','SÓC',['Adão'],'Sofia respondeu o primeiro paciente de teste',-12,-13,'feito'),
+        it(104,'D+0','PP','CS+GT',['Adão','Gestora'],'Kickoff realizado',-14,-14,'feito'),
+        it(105,'D+2','QW','CS',['Adão'],'Sofia respondeu o primeiro paciente de teste',-12,-13,'feito'),
         it(106,'D+3','PP','CLI',['Cliente'],'One-pager aprovado pelo cliente',-7,null,'atrasado','Atraso do cliente'),
         it(107,'D+5','PP','IA',['Automação'],'Conexão da Sofia com o WhatsApp da clínica',-4,null,'atrasado','Atraso nosso'),
-        it(108,'D+7','QW','SÓC',['Adão'],'Máquina montada — primeira demo pro cliente',-3,null,'atraso_qw'),
+        it(108,'D+7','QW','CS',['Adão'],'Máquina montada — primeira demo pro cliente',-3,null,'atraso_qw'),
         it(109,'D+8','PP','IA',['Automação'],'SMOKE test verde',2,null,'pendente'),
       ]},
       {titulo:'FASE 02', desc:'Go-live e ativação — monitoria e o primeiro agendamento de verdade no PMS.', itens:[
-        it(110,'D+10','PP','SÓC',['Adão'],'Follow-up de vencimento',0,null,'hoje'),
-        it(111,'D+15','QW','SÓC',['Adão'],'Primeiro agendamento real gerado pela Sofia no PMS',10,null,'pendente'),
+        it(110,'D+10','PP','CS',['Adão'],'Follow-up de vencimento',0,null,'hoje'),
+        it(111,'D+15','QW','CS',['Adão'],'Primeiro agendamento real gerado pela Sofia no PMS',10,null,'pendente'),
         it(112,'D+20','PP','IA',['Automação'],'Monitoria ativa de 7 dias concluída',20,null,'pendente'),
       ]},
       {titulo:'FASE 03', desc:'Prova e renovação — NPS, relatório D30 e call de renovação.', itens:[
@@ -1386,11 +1386,11 @@ function dadosTreino(){
     obs:'🎓 Cliente de treino. Nada aqui é salvo de verdade.',
     fases:[
       {titulo:'FASE 00', desc:'Pré-kickoff — boas-vindas, kit de pré-requisitos, provas e agendamento do kickoff.', itens:[
-        it(201,'A+1','PP','SÓC',['Adão'],'Boas-vindas e kit de pré-requisitos enviado',-38,-37,'feito'),
+        it(201,'A+1','PP','CS',['Adão'],'Boas-vindas e kit de pré-requisitos enviado',-38,-37,'feito'),
         it(202,'A+5','PP','CLI',['Cliente'],'Agendamento do kickoff confirmado',-25,-25,'feito'),
       ]},
       {titulo:'FASE 01', desc:'Kickoff e montagem — one-pager, conexão, máquina montada e SMOKE.', itens:[
-        it(203,'D+0','PP','SÓC+GT',['Adão','Gestora'],'Kickoff realizado',-18,-18,'feito'),
+        it(203,'D+0','PP','CS+GT',['Adão','Gestora'],'Kickoff realizado',-18,-18,'feito'),
         it(204,'D+3','PP','CRC',['CRC da clínica'],'Cadastro do CRC no sistema da clínica',-3,null,'atrasado','Atraso do cliente'),
       ]},
       {titulo:'MÓDULO', desc:'Trilho de tráfego do combo — o relógio da Sofia manda; Gate 2 governa.', itens:[
@@ -1399,8 +1399,8 @@ function dadosTreino(){
         it(207,'M+3','PP','GT',['Gestora'],'Primeira veiculação no ar',5,null,'pendente'),
       ]},
       {titulo:'QWS', desc:'Celebrações exclusivas do combo — provam o funil inteiro.', itens:[
-        it(208,'QWS+1','QW','SÓC+GT',['Adão','Gestora'],'Marco: 10 agendamentos vindos do tráfego',-6,null,'atraso_qw'),
-        it(209,'QWS+2','QW','SÓC+GT',['Adão','Gestora'],'Funil completo provado (tráfego → Sofia → agendamento)',15,null,'pendente'),
+        it(208,'QWS+1','QW','CS+GT',['Adão','Gestora'],'Marco: 10 agendamentos vindos do tráfego',-6,null,'atraso_qw'),
+        it(209,'QWS+2','QW','CS+GT',['Adão','Gestora'],'Funil completo provado (tráfego → Sofia → agendamento)',15,null,'pendente'),
       ]},
     ]
   };
@@ -1809,7 +1809,7 @@ function renderModelo(v){
 }
 
 // ---------- CALENDÁRIO ----------
-const COR_PAPEL = p => p.includes('SÓC')?'var(--laranja)':p.includes('WIL')?'var(--wil)':p.includes('GT')?'var(--azul)':p.includes('IA')?'var(--verde)':p.includes('PIE')?'var(--roxo)':(p.includes('CLI')||p.includes('CRC'))?'var(--amarelo)':'var(--faint)';
+const COR_PAPEL = p => (p.includes('CS')||p.includes('CS'))?'var(--laranja)':p.includes('WIL')?'var(--wil)':p.includes('GT')?'var(--azul)':p.includes('IA')?'var(--verde)':p.includes('PIE')?'var(--roxo)':(p.includes('CLI')||p.includes('CRC'))?'var(--amarelo)':'var(--faint)';
 const corEv = i => i.cls==='atraso_qw'?'var(--vermelho)':i.tipo==='QW'?'var(--rosa)':stEfetivo(i)==='cliente'?'var(--amarelo)':COR_PAPEL(i.papel);
 let CAL_VIS = new Date(HOJE.getFullYear(), HOJE.getMonth(), 1);
 function renderCalendario(v){

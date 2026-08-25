@@ -47,6 +47,7 @@
 // ---------- CONFIG ----------
 var NOME_ABA_MODELO_SOFIA = 'Modelo Sofia';
 var NOME_ABA_MODELO_TRAFEGO = 'Modelo Tráfego';
+var NOME_ABA_MODELO_SAAS = 'Modelo Sofia SaaS';
 var NOME_ABA_REGISTRO = 'Registro de Ativação';
 var PREFIXO_ABA_CLIENTE = 'Cliente – ';
 var LARGURA_COL_ATIVIDADE = 420;
@@ -178,13 +179,13 @@ function instanciarClienteNovo() {
     // 2) Tipo de contrato
     var respTipo = ui.prompt(
       'Instanciar cliente novo — 2/4',
-      'Tipo de contrato:\n1 = Sofia (IA only)\n2 = Tráfego\n3 = Combo (Tráfego + Sofia)',
+      'Tipo de contrato:\n1 = Sofia (IA only)\n2 = Tráfego\n3 = Combo (Tráfego + Sofia)\n4 = Sofia SaaS',
       ui.ButtonSet.OK_CANCEL
     );
     if (respTipo.getSelectedButton() !== ui.Button.OK) return;
     var tipoTxt = (respTipo.getResponseText() || '').trim();
-    if (['1', '2', '3'].indexOf(tipoTxt) === -1) {
-      ui.alert('Tipo inválido: digite 1, 2 ou 3. Operação cancelada — nada foi alterado.');
+    if (['1', '2', '3', '4'].indexOf(tipoTxt) === -1) {
+      ui.alert('Tipo inválido: digite 1, 2, 3 ou 4. Operação cancelada — nada foi alterado.');
       return;
     }
     var tipo = Number(tipoTxt);
@@ -219,13 +220,16 @@ function instanciarClienteNovo() {
     } else if (tipo === 2) {
       servicoLabel = 'Tráfego';
       linhas = converterTrafegoParaD_(lerModelo_(NOME_ABA_MODELO_TRAFEGO));
+    } else if (tipo === 4) {
+      servicoLabel = 'Sofia SaaS';
+      linhas = lerModelo_(NOME_ABA_MODELO_SAAS);
     } else {
       servicoLabel = 'COMBO (Tráfego + Sofia)';
       linhas = montarLinhasCombo_(lerModelo_(NOME_ABA_MODELO_SOFIA));
     }
 
     if (!linhas || linhas.length === 0) {
-      ui.alert('O modelo correspondente não retornou nenhuma linha de atividade. Confira as abas "' + NOME_ABA_MODELO_SOFIA + '" / "' + NOME_ABA_MODELO_TRAFEGO + '". Operação cancelada, nada foi criado.');
+      ui.alert('O modelo correspondente não retornou nenhuma linha de atividade. Confira as abas "' + NOME_ABA_MODELO_SOFIA + '" / "' + NOME_ABA_MODELO_TRAFEGO + '" / "' + NOME_ABA_MODELO_SAAS + '". Operação cancelada, nada foi criado.');
       return;
     }
 
@@ -1621,6 +1625,7 @@ function _instanciarCore(nome, tipo, dataAssinatura, dataKickoff) {
   var servicoLabel, linhas;
   if (tipo === 1) { servicoLabel = 'Sofia (IA only)'; linhas = lerModelo_(NOME_ABA_MODELO_SOFIA); }
   else if (tipo === 2) { servicoLabel = 'Tráfego'; linhas = converterTrafegoParaD_(lerModelo_(NOME_ABA_MODELO_TRAFEGO)); }
+  else if (tipo === 4) { servicoLabel = 'Sofia SaaS'; linhas = lerModelo_(NOME_ABA_MODELO_SAAS); }
   else { servicoLabel = 'COMBO (Tráfego + Sofia)'; linhas = montarLinhasCombo_(lerModelo_(NOME_ABA_MODELO_SOFIA)); }
   if (!linhas || !linhas.length) return { ok: false, erro: 'modelo vazio' };
 
@@ -1644,7 +1649,7 @@ function _instanciarViaApi_(p) {
   if (/[\[\]\*\?\/\:]/.test(nome)) return _json({ ok: false, erro: "nome tem caractere proibido em aba" });
   if (/^[=+\-@]/.test(nome)) return _json({ ok: false, erro: "nome não pode começar com = + - @" });
   var tipo = Number(p.tipo);
-  if ([1, 2, 3].indexOf(tipo) === -1) return _json({ ok: false, erro: "tipo inválido (1=Sofia, 2=Tráfego, 3=Combo)" });
+  if ([1, 2, 3, 4].indexOf(tipo) === -1) return _json({ ok: false, erro: "tipo inválido (1=Sofia, 2=Tráfego, 3=Combo, 4=Sofia SaaS)" });
   var ass = _parsePrazoISO_(p.assinatura);
   if (!ass.ok || !ass.data) return _json({ ok: false, erro: "assinatura inválida (use AAAA-MM-DD)" });
   var kick = _parsePrazoISO_(p.kickoff);
