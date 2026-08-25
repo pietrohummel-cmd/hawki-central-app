@@ -2471,7 +2471,9 @@ function renderMensagensProntas(c, its){
 
   <div class="box" style="margin-top:12px"><h2>🛠 Bancada (D+3)</h2>
     <div class="mnote">Sem fonte automática ainda (a fonte Sofia entra na MF-M4) — mensagem pronta + anexe o print do funil na atividade correspondente (aba Etapas, ícone 📎).</div>
-    <div class="mfull" style="margin-top:8px"><label>Nota (opcional)</label><input id="bc-nota" placeholder="Ex: pipeline com 3 automações, KB e guardrail no lugar" maxlength="160"></div>
+    <div class="mfull" style="margin-top:8px"><label>Nota (opcional)</label><input id="bc-nota" placeholder="Ex: pipeline com 3 automações, KB e guardrail no lugar" maxlength="160">
+      <div class="mnote" style="margin-top:4px">⚠️ Não escreva nome de paciente aqui — é texto livre, sem verificação (L13 do relatório de auditoria 25/08: decisão do Pietro manter texto livre, só com este aviso).</div>
+    </div>
     <button class="btn sec" style="margin-top:8px" data-acao-marco="bancada-gerar" data-aba="${esc(c.aba)}">Gerar mensagem</button>
     <div id="bc-resultado"></div>
   </div>
