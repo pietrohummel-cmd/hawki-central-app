@@ -458,7 +458,11 @@ function montarAba_(servico, dataAssinatura, dataKickoff, linhas, nomeCliente) {
  * migrarPapelECriterios() aplica antes de casar o critério de pronto.
  */
 var CORRECOES_TEXTO_ = {
-  "Boas-vindas em voz de fundador + welcome video enviados (antes de qualquer cobrança)": "Mensagem de boas-vindas enviada no grupo ANTES de qualquer cobrança, com o estrategista se apresentando pelo nome, e o link do formulário de estruturação junto: link.digitalmoonbr.com/widget/survey/9oHI74HQ68SDQvrtBX39 (texto pronto no vault, 50 Specs > Templates de mensagem — onboarding)."
+  "Boas-vindas em voz de fundador + welcome video enviados (antes de qualquer cobrança)": "Mensagem de boas-vindas no grupo + formulário de estruturação enviado (antes de qualquer cobrança)",
+  // REPARO 25/08: um bug meu (str.index pegou a 1a ocorrencia da chave, que estava
+  // neste proprio dicionario) fez a migracao escrever o CRITERIO dentro da coluna
+  // Atividade. Esta linha desfaz isso nas abas ja migradas. Idempotente.
+  "Mensagem de boas-vindas enviada no grupo ANTES de qualquer cobrança, com o estrategista se apresentando pelo nome, e o link do formulário de estruturação junto: link.digitalmoonbr.com/widget/survey/9oHI74HQ68SDQvrtBX39 (texto pronto no vault, 50 Specs > Templates de mensagem — onboarding).": "Mensagem de boas-vindas no grupo + formulário de estruturação enviado (antes de qualquer cobrança)"
 };
 
 var CRITERIOS_PRONTO_ = {
@@ -768,14 +772,14 @@ function parseDataBR_(texto) {
 // O painel manda POST text/plain com JSON {k, acao, ...}. Token simples
 // abaixo — trocar se vazar. Só aceita escrita em abas "Cliente – *".
 // =====================================================================
-var API_TOKEN = '__TOKEN_API__';
+var API_TOKEN = 'hc_x9k24qf7';
 
 // Segredo do modo local (hawki_central.html). API_TOKEN acima vaza pro
 // app.html público (é lido de graça no view-source) — NUNCA basta sozinho
 // pra virar admin. K_LOCAL_TOKEN só é embutido no template local
 // (__MODO_APP__=false, build_central.py); o app.html publicado (modo=true)
 // nunca recebe este valor. Trocar os dois juntos se vazar.
-var K_LOCAL_TOKEN = '__TOKEN_LOCAL__';
+var K_LOCAL_TOKEN = 'hcl_p9m3vqz71t';
 
 // ---------------------------------------------------------------
 // VALIDAÇÃO SUPABASE (Fase F5-app) — login individual do app.html.
@@ -1084,7 +1088,15 @@ function _validaAgregados_(marco, agregados) {
 
   var chavesEntrada = Object.keys(entrada);
   for (var j = 0; j < chavesEntrada.length; j++) {
-    if (!schema[chavesEntrada[j]]) return { ok: false, erro: 'campo não permitido neste marco: ' + chavesEntrada[j] };
+    // L10 (achado leve 25/08): 'schema[chave]' sozinho deixa passar chaves de
+    // protótipo ('constructor', 'toString', '__proto__' via JSON.parse cria
+    // propriedade própria, 'valueOf', 'hasOwnProperty') porque a leitura sobe
+    // a cadeia de protótipo do objeto JS e acha um método herdado (truthy) em
+    // vez de undefined — a rejeição "campo não permitido" nunca disparava
+    // pra essas chaves. hasOwnProperty.call() consulta só a chave PRÓPRIA.
+    if (!Object.prototype.hasOwnProperty.call(schema, chavesEntrada[j])) {
+      return { ok: false, erro: 'campo não permitido neste marco: ' + chavesEntrada[j] };
+    }
   }
 
   var limpo = {};
@@ -1094,7 +1106,16 @@ function _validaAgregados_(marco, agregados) {
     var v = entrada[k];
     if (v === null || v === undefined || v === '') continue; // campo opcional vazio: ok
     if (tipo === 'num') {
-      var n = Number(v);
+      // L11 (achado leve 25/08): Number() sozinho aceita '0x10' (hex), '1e3'
+      // (notação científica), ' 12 ' (espaço nas pontas) e até booleano
+      // (Number(true)===1) — nada disso é uma contagem/valor em reais
+      // digitado por gente. Exige dígitos com separador decimal opcional
+      // (vírgula OU ponto), SEM trim antes — o regex ancorado (^...$) já
+      // rejeita espaço nas pontas de propósito (o front nunca manda campo
+      // numérico com espaço: o input já entrega Number(...)||0).
+      var vTexto = String(v);
+      if (!/^\d+([.,]\d+)?$/.test(vTexto)) return { ok: false, erro: 'campo numérico inválido: ' + k };
+      var n = Number(vTexto.replace(',', '.'));
       if (!isFinite(n) || n < 0 || n > 10000000) return { ok: false, erro: 'campo numérico inválido: ' + k };
       limpo[k] = n;
     } else if (tipo === 'txt') {
@@ -1104,6 +1125,38 @@ function _validaAgregados_(marco, agregados) {
     }
   }
   return { ok: true, valor: limpo };
+}
+
+// Espelho 1:1 das regex de STREAK_ETAPAS do build_central.py (linha ~2585)
+// — usado só pra achar, dentro da aba, a atividade que corresponde a um
+// marco registrado, pra marcar a coluna F (feito) junto (M7 do relatório de
+// auditoria 25/08). Mesma régua de _classificaStatus_ (linha ~1207): mudar
+// aqui SEMPRE muda junto no Python, e vice-versa. 'dinheiro_parado' e
+// 'placar_60' ficam de fora de propósito — não existe atividade do modelo
+// pra elas (o 60 dias é recap, não faz parte da jornada dos 7 passos).
+var REGEX_ATIVIDADE_POR_MARCO_ = {
+  streak_1: /boas.?vindas/i,
+  streak_2: /call de onboarding realizada|kickoff fechado/i,
+  streak_3: /m[aá]quina montada.*bancada/i,
+  streak_4: /laudo verde/i,
+  streak_5: /go.?live/i,
+  streak_6: /primeiro de verdade|primeiro agendamento real/i,
+  streak_7: /placar dos 30 dias comemorado|30 dias de placar fechados|m[aá]quina completa rodando.*30 dias fechados/i,
+  bancada: /m[aá]quina montada.*bancada/i, // mesma etapa 3 (bancada ainda não tem fonte automática — MF-M4)
+  placar_30: /placar dos 30 dias comemorado|30 dias de placar fechados|m[aá]quina completa rodando.*30 dias fechados/i, // mesma etapa 7
+};
+
+/** Acha a 1ª linha (>=6, ignorando cabeçalho de fase/módulo) da aba cuja coluna D (Ativ) casa com `regex`. Devolve 0 se não achar. */
+function _achaLinhaAtividadePorTexto_(sh, regex) {
+  var ultima = sh.getLastRow();
+  if (ultima < 6) return 0;
+  var vals = sh.getRange(6, 1, ultima - 5, 4).getValues(); // A..D
+  for (var i = 0; i < vals.length; i++) {
+    if (_ehLinhaDeFase_(vals[i][0])) continue; // cabeçalho de fase, não é atividade de verdade
+    var txt = String(vals[i][3] || ''); // coluna D
+    if (txt && regex.test(txt)) return 6 + i;
+  }
+  return 0;
 }
 
 /** Acha (ou cria, uma única vez) a aba "Marcos" com o cabeçalho fixo. */
@@ -1129,7 +1182,13 @@ function _achaOuCriaAbaMarcos_() {
  */
 function _registraMarco_(p, sh, sbCheck) {
   var marco = String(p.marco || '').trim();
-  if (!MARCOS_VALIDOS_[marco]) return _json({ ok: false, erro: 'marco inválido: ' + marco });
+  // L10 (achado leve 25/08): mesma classe de bug do _validaAgregados_ abaixo
+  // — 'MARCOS_VALIDOS_[marco]' com marco='constructor' devolve a função
+  // Object herdada (truthy), passando pela whitelist. hasOwnProperty.call()
+  // fecha isso.
+  if (!Object.prototype.hasOwnProperty.call(MARCOS_VALIDOS_, marco)) {
+    return _json({ ok: false, erro: 'marco inválido: ' + marco });
+  }
 
   if (sbCheck.cargo !== 'admin') {
     if (!_clienteVisivelParaEscrita_(p.aba, p.sb_token)) {
@@ -1140,19 +1199,67 @@ function _registraMarco_(p, sh, sbCheck) {
   var v = _validaAgregados_(marco, p.agregados);
   if (!v.ok) return _json({ ok: false, erro: v.erro });
 
-  var nomeCli = String(sh.getRange('B1').getValue() || String(p.aba).replace(PREFIXO_ABA_CLIENTE, ''));
-  var quem = sbCheck.quem || sbCheck.cargo || 'desconhecido';
+  // G1 (achado grave 25/08): nomeCli (fallback: nome da aba) e, principalmente,
+  // `quem` (perfil.nome do Supabase) são texto de fora da planilha — um cs
+  // aprovado PODE editar o próprio nome (policy profiles_update_self libera
+  // a coluna; o trigger só protege cargo/aprovado/email). Sem sanitizar,
+  // "=IMPORTXML(...)" em perfil.nome virava fórmula executável na aba Marcos
+  // assim que alguém registrasse qualquer marco. Mesma régua de
+  // _sanitizaTexto_ usada em toda escrita de texto livre desta planilha.
+  var nomeCliBruto = String(sh.getRange('B1').getValue() || String(p.aba).replace(PREFIXO_ABA_CLIENTE, ''));
+  var quemBruto = String(sbCheck.quem || sbCheck.cargo || 'desconhecido');
+  var vNome = _sanitizaTexto_(nomeCliBruto, 200);
+  var vQuem = _sanitizaTexto_(quemBruto, 200);
+  // Nome sujo (edição manual da planilha, dado legado) não pode travar o
+  // registro do marco em si — nega por padrão (fallback textual seguro),
+  // nunca deixa passar cru.
+  var nomeCli = vNome.ok ? vNome.valor : '(nome inválido)';
+  var quem = vQuem.ok ? vQuem.valor : '(nome inválido)';
 
   var lock = LockService.getDocumentLock();
   if (!lock.tryLock(15000)) return _json({ ok: false, erro: 'planilha ocupada, tente de novo' });
   try {
     var abaMarcos = _achaOuCriaAbaMarcos_();
-    abaMarcos.appendRow([new Date(), nomeCli, marco, JSON.stringify(v.valor), quem]);
+    var rMarco = abaMarcos.getLastRow() + 1;
+    // defesa em profundidade (mesmo padrão de _novaTarefa_, linhas ~1023-1024):
+    // força texto simples nas colunas de texto ANTES de escrever, pra que
+    // nenhum prefixo de fórmula que escape da sanitização vire expressão
+    // executável quando o Sheets interpreta o setValues (a coluna A — Data —
+    // fica de fora de propósito, precisa continuar como data de verdade).
+    abaMarcos.getRange(rMarco, 2, 1, 3).setNumberFormat('@'); // B Cliente, C Marco, D Agregados
+    abaMarcos.getRange(rMarco, 5, 1, 1).setNumberFormat('@'); // E Por
+    abaMarcos.getRange(rMarco, 1, 1, 5).setValues([[new Date(), nomeCli, marco, JSON.stringify(v.valor), quem]]);
     SpreadsheetApp.flush();
     var esp = _supabaseInsert_('marcos', [{
       cliente_aba: p.aba, marco: marco, payload: v.valor, criado_por: quem
     }]);
-    return _json({ ok: true, espelho: esp.ok ? 'ok' : esp.erro });
+
+    // M7 (achado médio 25/08): o §MF-M2 do plano define o aceite como "colar
+    // -> marcar feita", e o streak (detectaEtapas/STREAK_ETAPAS do
+    // build_central.py) só conta uma etapa como concluída quando a ATIVIDADE
+    // correspondente está cls==='feito' — sem encadear os dois, "bancada" e
+    // "placar_30" (que não têm fonte automática ainda, MF-M4) registravam o
+    // marco mas nunca marcavam a tarefa, e o streak ficava travado pra
+    // sempre na etapa anterior. REGEX_ATIVIDADE_POR_MARCO_ é espelho 1:1 das
+    // regex de STREAK_ETAPAS (mesma regra: mudar aqui SEMPRE muda lá também).
+    var tarefa = null;
+    var regexAtiv = REGEX_ATIVIDADE_POR_MARCO_[marco];
+    if (regexAtiv) {
+      var linhaAtiv = _achaLinhaAtividadePorTexto_(sh, regexAtiv);
+      if (!linhaAtiv) {
+        tarefa = { ok: false, motivo: 'sem atividade correspondente no modelo desta jornada' };
+      } else if (String(sh.getRange(linhaAtiv, 6).getValue() || '').trim() !== '') {
+        tarefa = { ok: true, row: linhaAtiv, jaEstava: true }; // já feita — não sobrescreve a data original
+      } else {
+        var hojeBR = Utilities.formatDate(new Date(), 'America/Sao_Paulo', 'dd/MM/yyyy');
+        sh.getRange(linhaAtiv, 6).setNumberFormat('dd/mm/yyyy').setValue(hojeBR);
+        SpreadsheetApp.flush();
+        var espTarefa = _espelharLinha_(sh, p.aba, linhaAtiv);
+        tarefa = { ok: true, row: linhaAtiv, espelho: espTarefa };
+      }
+    }
+
+    return _json({ ok: true, espelho: esp.ok ? 'ok' : esp.erro, tarefa: tarefa });
   } catch (err) {
     return _json({ ok: false, erro: String(err) });
   } finally {
@@ -1870,21 +1977,61 @@ function _instanciarViaApi_(p) {
 var PREFIXO_LISTA_ = 'lista/';
 var BUCKET_ARQUIVOS_ = 'arquivos';
 var EXPURGO_DIAS_ = 90;
+var STORAGE_LIST_LIMIT_ = 1000; // teto de itens por chamada da Storage API — L16
 
-/** Lista uma "pasta" do bucket via Storage API (não é recursivo — subpastas voltam como itens sem `id`). */
+// L16 (achado leve 25/08): a Storage API do Supabase (/storage/v1/object/*)
+// EXIGE o header Authorization mesmo com apikey presente — diferente do
+// PostgREST (/rest/v1/*, ver _supabaseUpsert_/_supabaseInsert_), que
+// rejeita Authorization quando a chave NOVA (sb_secret_/sb_publishable_)
+// não é JWT (tenta decodificar como JWT e dá 401). O `ehJwt` abaixo (e em
+// expurgarListasAntigas) só manda Authorization pra chave no formato JWT
+// antigo (eyJ...) — SE a Script Property um dia for trocada pro formato
+// novo (sb_secret_...), a Storage API vai rejeitar toda chamada aqui, e sem
+// o `null` (ver abaixo) isso morria em silêncio como "0 arquivo a apagar".
+// Se isso acontecer, a correção é mandar Authorization SEMPRE nestas duas
+// funções (a Storage API tolera o header mesmo pra chave JWT), nunca só
+// condicionalmente como no PostgREST.
+
+/**
+ * Lista uma "pasta" do bucket via Storage API, paginando até esgotar (o teto
+ * por chamada é STORAGE_LIST_LIMIT_ — sem paginação, uma pasta com mais
+ * arquivos que o limite perdia os excedentes em silêncio, achado leve 25/08).
+ * Não é recursivo — subpastas voltam como itens sem `id`.
+ *
+ * Devolve `null` em qualquer erro (rede, HTTP >=300, corpo não-JSON) —
+ * NUNCA `[]`, que fica reservado só pra "0 arquivos de verdade" (achado
+ * médio 25/08: `[]` pra erro fazia expurgarListasAntigas() logar "nada a
+ * apagar" numa falha de rede/token exatamente como se a pasta estivesse
+ * vazia — falha disfarçada de sucesso).
+ */
 function _storageListar_(prefixo, cab) {
-  var r = UrlFetchApp.fetch(SUPABASE_URL + '/storage/v1/object/list/' + BUCKET_ARQUIVOS_, {
-    method: 'post',
-    contentType: 'application/json',
-    headers: cab,
-    payload: JSON.stringify({ prefix: prefixo, limit: 1000, sortBy: { column: 'name', order: 'asc' } }),
-    muteHttpExceptions: true,
-  });
-  if (r.getResponseCode() >= 300) {
-    Logger.log('expurgarListasAntigas: list falhou (' + prefixo + '): HTTP ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 300));
-    return [];
+  var tudo = [];
+  var offset = 0;
+  while (true) {
+    var r = UrlFetchApp.fetch(SUPABASE_URL + '/storage/v1/object/list/' + BUCKET_ARQUIVOS_, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: cab,
+      payload: JSON.stringify({ prefix: prefixo, limit: STORAGE_LIST_LIMIT_, offset: offset, sortBy: { column: 'name', order: 'asc' } }),
+      muteHttpExceptions: true,
+    });
+    if (r.getResponseCode() >= 300) {
+      Logger.log('_storageListar_ falhou (' + prefixo + ', offset ' + offset + '): HTTP ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 300));
+      return null;
+    }
+    var pagina;
+    try {
+      pagina = JSON.parse(r.getContentText());
+    } catch (e) {
+      Logger.log('_storageListar_ falhou (' + prefixo + '): resposta não é JSON válido — ' + e);
+      return null;
+    }
+    if (!pagina || !pagina.length) break;
+    tudo = tudo.concat(pagina);
+    if (pagina.length < STORAGE_LIST_LIMIT_) break; // última página
+    offset += STORAGE_LIST_LIMIT_;
   }
-  try { return JSON.parse(r.getContentText()) || []; } catch (e) { return []; }
+  return tudo;
 }
 
 function expurgarListasAntigas() {
@@ -1897,11 +2044,26 @@ function expurgarListasAntigas() {
   var corte = new Date(Date.now() - EXPURGO_DIAS_ * 86400000);
   var aApagar = [];
 
+  // M6 (achado médio 25/08): _storageListar_ agora devolve `null` em erro —
+  // aborta com mensagem clara em vez de tratar "não consegui listar" como
+  // "a pasta está vazia" (o bug original: [] servia pros dois casos, e
+  // expurgarListasAntigas() sempre concluía "nada a apagar", nunca
+  // acionando alarme nenhum numa falha real de token/rede).
   var pastasCliente = _storageListar_(PREFIXO_LISTA_, cab);
+  if (pastasCliente === null) {
+    Logger.log('expurgarListasAntigas: ABORTADO — não consegui listar ' + PREFIXO_LISTA_ + ' (ver log de _storageListar_ acima). NÃO é "nada a apagar".');
+    return 'erro: falha ao listar ' + PREFIXO_LISTA_ + ' — ver log';
+  }
+  var falhouSubpasta = false;
   pastasCliente.forEach(function (pasta) {
     if (pasta.id) return; // arquivo solto direto em lista/ (não deveria existir com o path do §1) — ignora, não apaga por engano
     var prefixoCliente = PREFIXO_LISTA_ + pasta.name + '/';
     var arquivos = _storageListar_(prefixoCliente, cab);
+    if (arquivos === null) {
+      falhouSubpasta = true;
+      Logger.log('expurgarListasAntigas: falha ao listar ' + prefixoCliente + ' — pulando esta pasta nesta rodada (não conto como "0 arquivos").');
+      return;
+    }
     arquivos.forEach(function (a) {
       if (!a.id) return; // subpasta
       var criado = a.created_at ? new Date(a.created_at) : null;
@@ -1911,6 +2073,10 @@ function expurgarListasAntigas() {
   });
 
   if (!aApagar.length) {
+    if (falhouSubpasta) {
+      Logger.log('expurgarListasAntigas: ABORTADO — pelo menos uma pasta de cliente falhou ao listar; não confirmo "nada a apagar" nessas condições. Rode de novo.');
+      return 'erro: falha parcial ao listar subpastas — rode de novo';
+    }
     Logger.log('expurgarListasAntigas: nada a apagar (0 arquivo de lista/ com mais de ' + EXPURGO_DIAS_ + ' dias).');
     return JSON.stringify({ apagados: 0 });
   }
@@ -1924,6 +2090,7 @@ function expurgarListasAntigas() {
   });
   var resumo = { tentados: aApagar.length, http: del.getResponseCode(), caminhos: aApagar.slice(0, 20) };
   if (del.getResponseCode() >= 300) resumo.erro = del.getContentText().slice(0, 300);
+  if (falhouSubpasta) resumo.aviso = 'pelo menos 1 pasta de cliente falhou ao listar nesta rodada — pode haver arquivo vencido que não entrou nesta lista';
   Logger.log('expurgarListasAntigas: ' + JSON.stringify(resumo));
   return JSON.stringify(resumo);
 }

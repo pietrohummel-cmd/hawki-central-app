@@ -455,7 +455,14 @@ aplicaCabecalho();
 const MES = ['jan.','fev.','mar.','abr.','mai.','jun.','jul.','ago.','set.','out.','nov.','dez.'];
 const MESL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const DIAS = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
-const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// G2 (achado grave 25/08): faltava escapar aspas simples e crase — qualquer
+// texto vindo de fora (nome de arquivo do Storage, nome de perfil etc.)
+// interpolado dentro de um onclick="...('${esc(x)}')" quebrava a string JS
+// da própria página com um apóstrofo cru, virando XSS armazenado. Os 8
+// onclick novos da MF-M2 que dependiam da string do JS foram convertidos
+// pra data-* + listener delegado (não reinterpreta a string como código),
+// e esta correção do esc() é defesa em profundidade pros 18 onclick antigos.
+const esc = s => String(s).replace(/[&<>"'`]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;'}[c]));
 // ---- pessoas atribuíveis (movido pra cá, ANTES de montaFiltros() ser
 // chamado na linha ~693: montaFiltros roda de imediato no modo local, e uma
 // const declarada mais abaixo no arquivo estouraria "acesso antes da
@@ -2336,15 +2343,41 @@ function copiarTexto(txt, btn){
 // ---- cache de marcos já registrados por cliente (aba -> Set(marco)) ----
 let MARCOS_CACHE = {};
 let MARCOS_CARREGANDO = new Set();
+// L14 (achado leve 25/08): cache local (localStorage) por aba — serve de
+// fonte pro modo local (hawki_central.html, sem login Supabase: `sb` nunca
+// existe), que antes não tinha NENHUMA forma de saber que um marco já tinha
+// sido registrado numa sessão anterior e deixava "Marcar enviada" duplicar
+// linha na aba Marcos a cada reload. Não substitui o Supabase (é só cache
+// de UM navegador/máquina), mas fecha o caso comum.
+function _marcosLocalKey_(aba){ return 'central_marcos_'+aba; }
+function _lerMarcosLocal_(aba){
+  try{
+    const raw = localStorage.getItem(_marcosLocalKey_(aba));
+    return raw ? new Set(JSON.parse(raw)) : null;
+  }catch(e){ return null; } // storage bloqueado/indisponível — sem cache local, sem quebrar nada
+}
+function _gravarMarcosLocal_(aba, set){
+  try{ localStorage.setItem(_marcosLocalKey_(aba), JSON.stringify([...set])); }catch(e){ /* idem — best effort */ }
+}
 function garantirMarcosCarregados(aba){
-  if(MARCOS_CACHE[aba] || MARCOS_CARREGANDO.has(aba) || !sb || !SESSAO || MODO_TREINO) return;
+  if(MARCOS_CACHE[aba] || MARCOS_CARREGANDO.has(aba) || MODO_TREINO) return;
+  const local = _lerMarcosLocal_(aba);
+  if(local) MARCOS_CACHE[aba] = local; // hidrata na hora (síncrono) — já vale pra ESTA renderização
+  if(!sb || !SESSAO) return; // modo local sem login: sem Supabase pra confirmar, fica só com o cache local (se houver)
   MARCOS_CARREGANDO.add(aba);
   sb.from('marcos').select('marco').eq('cliente_aba', aba).then(({data,error})=>{
     MARCOS_CARREGANDO.delete(aba);
+    // L14: erro NÃO cacheia Set vazio — antes, qualquer falha de rede virava
+    // um MARCOS_CACHE[aba]=new Set() permanente (a checagem do topo desta
+    // função só olha "existe entrada no cache?", e um Set vazio já é
+    // truthy), então uma falha passageira travava a resposta errada pra
+    // sempre até o próximo reload. Sem gravar aqui, a próxima chamada tenta
+    // de novo.
+    if(error){ console.error('garantirMarcosCarregados:', error.message); return; }
     const s = new Set();
-    if(error) console.error('garantirMarcosCarregados:', error.message);
-    else if(data) data.forEach(r=>s.add(r.marco));
+    if(data) data.forEach(r=>s.add(r.marco));
     MARCOS_CACHE[aba] = s;
+    _gravarMarcosLocal_(aba, s);
     if(CLI===aba && ABA_CLI==='marcos') render();
   });
 }
@@ -2353,19 +2386,41 @@ async function registrarMarco(aba, marco, agregados, btn){
   if(!res) return;
   if(!MARCOS_CACHE[aba]) MARCOS_CACHE[aba] = new Set();
   MARCOS_CACHE[aba].add(marco);
+  _gravarMarcosLocal_(aba, MARCOS_CACHE[aba]);
+  // M7: o GAS agora tenta marcar a tarefa correspondente (coluna F) junto —
+  // avisa na UI quando não achou atividade pra vincular (marco sem tarefa
+  // no modelo, ex.: dinheiro_parado/placar_60), pra não passar a impressão
+  // de que algo quebrou.
+  if(res.tarefa && res.tarefa.ok === false){
+    toast('Marco registrado — mas não achei a tarefa correspondente pra marcar feita (' + res.tarefa.motivo + ').', 'info');
+  }
   render();
 }
 
 // ---- streak "etapa X de 7" — mapa por TEXTO da atividade, tolerante a
-// variação entre o modelo antigo e o Modelo Sofia SaaS (§MF-M2 do plano). ----
+// variação entre o modelo antigo e o Modelo Sofia SaaS (§MF-M2 do plano).
+// G4/L15 (achados grave/leve 25/08): a auditoria rodou estas 7 regex contra
+// public.atividades DE VERDADE (325 atividades reais dos 6 clientes + o
+// modelo em ZZ TESTE SAAS APAGAR) e achou: etapa 7 não casava com NENHUMA
+// das 316 atividades reais (o texto real é "30 dias de placar fechados:
+// máquina instalada (etapa 7 de 7)" no modelo Sofia e "Máquina completa
+// rodando (anúncio, Sofia, CRC, agenda): 30 dias fechados" no COMBO —
+// nenhum dos dois batia com "placar dos 30 dias"/"balanço dos 30 dias"); e
+// etapas 2 e 3 casavam com DUAS atividades por cliente (ex.: "Kickoff
+// realizado: one-pager lido..." E "Kickoff fechado, etapa 2 de 7
+// comunicada" pra etapa 2 — o find() sempre pegava a primeira, não
+// necessariamente a que representa a etapa concluída). Regex corrigidas e
+// validadas 1 casamento por etapa em cada um dos 7 clientes (os 6 reais +
+// o modelo). Espelho 1:1 em REGEX_ATIVIDADE_POR_MARCO_ do instanciador.gs —
+// mudar aqui SEMPRE muda lá também.
 const STREAK_ETAPAS = [
   {n:1, re:/boas.?vindas/i, msg:nome=>`Seja muito bem-vindo(a) à Hawki, equipe da ${nome}! 🎉\n\nEtapa 1 de 7: acabamos de dar o start na estruturação da sua Sofia. Em breve chegam os próximos passos.`},
-  {n:2, re:/call de onboarding realizada|kickoff realizado|kickoff fechado/i, msg:nome=>`Etapa 2 de 7 concluída! ✅\n\nA call de onboarding da ${nome} foi realizada e o escopo está confirmado por escrito. Agora é hora de montar a máquina.`},
-  {n:3, re:/m[aá]quina montada/i, msg:nome=>`Etapa 3 de 7! 🔧\n\nA máquina da ${nome} já está montada na bancada: pipeline, automações e base de conhecimento no lugar. Ainda ninguém vê nada, mas os bastidores já estão prontos.`},
+  {n:2, re:/call de onboarding realizada|kickoff fechado/i, msg:nome=>`Etapa 2 de 7 concluída! ✅\n\nA call de onboarding da ${nome} foi realizada e o escopo está confirmado por escrito. Agora é hora de montar a máquina.`},
+  {n:3, re:/m[aá]quina montada.*bancada/i, msg:nome=>`Etapa 3 de 7! 🔧\n\nA máquina da ${nome} já está montada na bancada: pipeline, automações e base de conhecimento no lugar. Ainda ninguém vê nada, mas os bastidores já estão prontos.`},
   {n:4, re:/laudo verde/i, msg:nome=>`Etapa 4 de 7! 🟢\n\nLaudo verde da ${nome}: os testes confirmaram que a Sofia está funcionando de ponta a ponta.`},
   {n:5, re:/go.?live/i, msg:nome=>`Etapa 5 de 7! 🚀\n\nGo live da ${nome}: a Sofia está no ar e pronta pra atender pacientes de verdade.`},
   {n:6, re:/primeiro de verdade|primeiro agendamento real/i, msg:nome=>`Etapa 6 de 7! 🙌\n\nPrimeiro agendamento real da ${nome} confirmado no sistema. A máquina já está gerando resultado de verdade.`},
-  {n:7, re:/placar dos 30 dias|balan[cç]o dos 30 dias/i, msg:nome=>`Etapa 7 de 7! 🏆\n\n30 dias fechados pra ${nome} e o placar comemorado. Chegamos ao fim da jornada de implantação.`},
+  {n:7, re:/placar dos 30 dias comemorado|30 dias de placar fechados|m[aá]quina completa rodando.*30 dias fechados/i, msg:nome=>`Etapa 7 de 7! 🏆\n\n30 dias fechados pra ${nome} e o placar comemorado. Chegamos ao fim da jornada de implantação.`},
 ];
 function detectaEtapas(its){
   return STREAK_ETAPAS.map(e=>{
@@ -2390,7 +2445,7 @@ function renderMensagensProntas(c, its){
           <div class="mnote" style="white-space:pre-wrap">${esc(texto)}</div>
           <div style="display:flex;gap:8px;margin-top:10px">
             <button class="btn sec" onclick="copiarTexto(MSGS_TEMP['streak_${e.n}'], this)">Copiar</button>
-            <button class="btn" onclick="registrarMarco('${esc(c.aba)}','streak_${e.n}',{etapa:${e.n}}, this)">Marcar enviada</button>
+            <button class="btn" data-acao-marco="streak" data-aba="${esc(c.aba)}" data-etapa="${e.n}">Marcar enviada</button>
           </div></div>`;
       }).join('')
     : `<div class="box"><div class="mnote">${etapaAtual? 'Todas as etapas concluídas até agora já foram marcadas como enviadas.' : 'Nenhuma etapa concluída ainda — a mensagem aparece aqui assim que a primeira atividade da jornada for marcada feita.'}</div></div>`;
@@ -2409,7 +2464,7 @@ function renderMensagensProntas(c, its){
       <div><label>Ticket médio (R$)</label><input type="number" id="dp-ticket" min="0" step="1" placeholder="Ex: 1500"></div>
       <div class="mfull" style="display:flex;align-items:center;gap:8px"><input id="dp-cabecalho" type="checkbox" checked style="width:auto"><label style="margin:0;text-transform:none;font-size:13px;color:var(--text)">A 1ª linha do CSV é cabeçalho (não conta como paciente)</label></div>
     </div>
-    <button class="btn sec" style="margin-top:8px" onclick="analisarListaDinheiroParado('${esc(c.aba)}')">Analisar lista</button>
+    <button class="btn sec" style="margin-top:8px" data-acao-marco="dp-analisar" data-aba="${esc(c.aba)}">Analisar lista</button>
     <div id="dp-resultado"></div>
     <div class="mnote" style="margin-top:8px">Formato aceito: só CSV. XLSX não é lido no navegador nesta versão (evita depender de biblioteca externa) — exporte a lista como CSV antes de subir.</div>
   </div>
@@ -2417,7 +2472,7 @@ function renderMensagensProntas(c, its){
   <div class="box" style="margin-top:12px"><h2>🛠 Bancada (D+3)</h2>
     <div class="mnote">Sem fonte automática ainda (a fonte Sofia entra na MF-M4) — mensagem pronta + anexe o print do funil na atividade correspondente (aba Etapas, ícone 📎).</div>
     <div class="mfull" style="margin-top:8px"><label>Nota (opcional)</label><input id="bc-nota" placeholder="Ex: pipeline com 3 automações, KB e guardrail no lugar" maxlength="160"></div>
-    <button class="btn sec" style="margin-top:8px" onclick="gerarBancada('${esc(c.aba)}')">Gerar mensagem</button>
+    <button class="btn sec" style="margin-top:8px" data-acao-marco="bancada-gerar" data-aba="${esc(c.aba)}">Gerar mensagem</button>
     <div id="bc-resultado"></div>
   </div>
 
@@ -2429,18 +2484,68 @@ function renderMensagensProntas(c, its){
       <div><label>Conversas</label><input type="number" id="pl${p}-conversas" min="0" step="1"></div>
       <div><label>Dinheiro de volta na mesa (R$)</label><input type="number" id="pl${p}-dinheiro" min="0" step="1"></div>
     </div>
-    <button class="btn sec" style="margin-top:8px" onclick="gerarPlacar('${esc(c.aba)}','${p}')">Gerar mensagem</button>
+    <button class="btn sec" style="margin-top:8px" data-acao-marco="placar-gerar" data-aba="${esc(c.aba)}" data-periodo="${p}">Gerar mensagem</button>
     <div id="pl${p}-resultado"></div>
   </div>`).join('')}`;
 }
 
+// G3 (achado grave 25/08): a versão anterior contava LINHA FÍSICA (split por
+// quebra de linha), não REGISTRO — um endereço com quebra de linha dentro de
+// aspas (CSV padrão RFC4180 aceita isso) virava 2 "pacientes", e um rodapé
+// de export do Excel (linha só de vírgulas, ex.: ",,") virava mais 1
+// "paciente" fantasma. O número sai por escrito pro cliente (mensagem de
+// "dinheiro parado"), então é a regra mais dura da casa: número nunca
+// inventado. parseCsv_ é uma máquina de estado simples (aspas abrem/fecham,
+// "" dentro de aspas = aspas literal, vírgula/quebra de linha dentro de
+// aspas não fecham o registro); contaLinhasCsv descarta o cabeçalho (se
+// marcado) e qualquer linha cujos campos sejam TODOS vazios.
+function parseCsv_(texto){
+  const registros = [];
+  let campo = '', registro = [], dentroAspas = false;
+  for(let i=0; i<texto.length; i++){
+    const c = texto[i];
+    if(dentroAspas){
+      if(c === '"'){
+        if(texto[i+1] === '"'){ campo += '"'; i++; } // "" escapado dentro de aspas = aspas literal
+        else dentroAspas = false;
+      } else {
+        campo += c; // inclui \r e \n literais — é exatamente o que RFC4180 permite dentro de aspas
+      }
+    } else if(c === '"'){
+      dentroAspas = true;
+    } else if(c === ','){
+      registro.push(campo); campo = '';
+    } else if(c === '\r'){
+      if(texto[i+1] !== '\n'){ registro.push(campo); campo=''; registros.push(registro); registro=[]; } // CR solto (Mac clássico) também fecha a linha
+      // senão é \r\n: ignora o \r, o \n seguinte fecha a linha
+    } else if(c === '\n'){
+      registro.push(campo); campo=''; registros.push(registro); registro=[];
+    } else {
+      campo += c;
+    }
+  }
+  if(campo !== '' || registro.length){ registro.push(campo); registros.push(registro); } // última linha sem quebra final
+  return registros;
+}
 function contaLinhasCsv(texto, temCabecalho){
-  const linhas = texto.split(/\r\n|\r|\n/).filter(l=>l.trim().length>0);
-  let n = linhas.length;
-  if(temCabecalho && n>0) n -= 1;
-  return Math.max(0, n);
+  let registros = parseCsv_(texto);
+  if(temCabecalho && registros.length) registros = registros.slice(1);
+  const reais = registros.filter(reg => reg.some(campo => campo.trim().length>0)); // descarta rodapé "linha só de vírgula"
+  return reais.length;
 }
 const fmtBRL = n => Number(n).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+// M8 (achado médio 25/08): o path do Storage usa a aba como segmento
+// ('lista/'+aba+'/...'), e a aba tem EN DASH (U+2013) em "Cliente – X" — a
+// Storage API do Supabase é ok com Unicode no nome do objeto, mas path com
+// caractere não-ASCII já causou dor de cabeça em ferramenta de terceiro/
+// URL encoding, e é o MESMO tipo de char especial que já sanitizamos no
+// NOME do arquivo (file.name.replace(...) logo abaixo). Sanitiza o SEGMENTO
+// da aba com a mesma regra. Isso é FUNCIONALMENTE seguro porque a aba de
+// VERDADE não se perde: o registro do marco (_registraMarco_ no GAS) grava
+// `p.aba` (a aba real, não sanitizada) em public.marcos — o path sanitizado
+// é só o "endereço" do arquivo no bucket, nunca a fonte de verdade de qual
+// cliente é qual.
+const sanitizaSegmentoPath = s => String(s).replace(/[^a-zA-Z0-9_.-]/g,'_');
 
 async function analisarListaDinheiroParado(aba){
   const fileInput=document.getElementById('dp-arquivo'), ticketInput=document.getElementById('dp-ticket'),
@@ -2460,11 +2565,11 @@ async function analisarListaDinheiroParado(aba){
   if(MODO_TREINO){
     uploadHtml = '<div class="mnote">🎓 Modo treino — o arquivo não seria realmente enviado ao Storage.</div>';
   } else if(MODO_APP && sb && SESSAO){
-    const path = 'lista/'+aba+'/'+Date.now()+'_'+file.name.replace(/[^a-zA-Z0-9_.-]/g,'_');
-    const enviado = await uploadParaBucket(path, file);
-    uploadHtml = enviado
+    const path = 'lista/'+sanitizaSegmentoPath(aba)+'/'+Date.now()+'_'+file.name.replace(/[^a-zA-Z0-9_.-]/g,'_');
+    const res = await uploadParaBucket(path, file);
+    uploadHtml = res.ok
       ? `<div class="mnote">✓ Arquivo enviado pro Storage privado (${esc(path)}).</div>`
-      : '<div class="aviso">Arquivo NÃO enviado ao Storage (confira o login) — a mensagem abaixo já foi gerada mesmo assim.</div>';
+      : `<div class="aviso">Arquivo NÃO enviado ao Storage: ${esc(res.erro||'erro desconhecido')} — a mensagem abaixo já foi gerada mesmo assim.</div>`;
   } else {
     uploadHtml = '<div class="mnote">Upload do arquivo pro Storage só funciona no app publicado (login Supabase). Em modo local o cálculo funciona, mas o arquivo não fica guardado.</div>';
   }
@@ -2473,7 +2578,7 @@ async function analisarListaDinheiroParado(aba){
     <div class="mnote" style="white-space:pre-wrap;margin-top:8px">${esc(textoMsg)}</div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn sec" onclick="copiarTexto(MSGS_TEMP['dinheiro_parado'], this)">Copiar</button>
-      <button class="btn" onclick="registrarMarco('${esc(aba)}','dinheiro_parado',{contagem:${contagem},ticket_medio:${ticket},total:${total}}, this)">Marcar enviada</button>
+      <button class="btn" data-acao-marco="dp-registrar" data-aba="${esc(aba)}" data-contagem="${contagem}" data-ticket="${ticket}" data-total="${total}">Marcar enviada</button>
     </div>`;
 }
 
@@ -2485,7 +2590,7 @@ function gerarBancada(aba){
   document.getElementById('bc-resultado').innerHTML = `<div class="mnote" style="white-space:pre-wrap;margin-top:8px">${esc(texto)}</div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn sec" onclick="copiarTexto(MSGS_TEMP['bancada'], this)">Copiar</button>
-      <button class="btn" onclick="registrarBancada('${esc(aba)}', this)">Marcar enviada</button>
+      <button class="btn" data-acao-marco="bancada-registrar" data-aba="${esc(aba)}">Marcar enviada</button>
     </div>`;
 }
 function registrarBancada(aba, btn){
@@ -2504,7 +2609,7 @@ function gerarPlacar(aba, periodo){
   document.getElementById('pl'+periodo+'-resultado').innerHTML = `<div class="mnote" style="white-space:pre-wrap;margin-top:8px">${esc(texto)}</div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn sec" onclick="copiarTexto(MSGS_TEMP['placar_${periodo}'], this)">Copiar</button>
-      <button class="btn" onclick="registrarPlacar('${esc(aba)}','${periodo}', this)">Marcar enviada</button>
+      <button class="btn" data-acao-marco="placar-registrar" data-aba="${esc(aba)}" data-periodo="${periodo}">Marcar enviada</button>
     </div>`;
 }
 function registrarPlacar(aba, periodo, btn){
@@ -2517,15 +2622,20 @@ function registrarPlacar(aba, periodo, btn){
 // usuário (nunca service key no front), download autenticado (.download()),
 // nunca URL pública. Guardrail: intercepta MODO_TREINO no funil (upload e
 // download), então nenhum caminho que chame estas duas funções escapa. ----
+// M8 (achado médio 25/08, parte 2): retorno virou {ok, data|erro} — antes
+// era `data` (truthy) ou `null`, e o chamador (analisarListaDinheiroParado)
+// mostrava sempre a MESMA mensagem genérica "confira o login" pra qualquer
+// falha (sessão expirada, bucket cheio, RLS de escopo do M5 barrando,
+// rede caindo no meio do upload...), escondendo a causa real.
 async function uploadParaBucket(path, file, btn){
-  if(treinoBloqueia('Enviar arquivo')) return null;
-  if(!sb || !SESSAO){ alert('Upload de arquivo exige login no app publicado (Supabase).'); return null; }
+  if(treinoBloqueia('Enviar arquivo')) return {ok:false, erro:'bloqueado em modo treino'};
+  if(!sb || !SESSAO){ alert('Upload de arquivo exige login no app publicado (Supabase).'); return {ok:false, erro:'sem login no app publicado'}; }
   const old = btn? btn.textContent:''; if(btn){btn.textContent='Enviando…'; btn.disabled=true;}
   const {data, error} = await sb.storage.from('arquivos').upload(path, file, {upsert:false});
   if(btn){btn.textContent=old; btn.disabled=false;}
-  if(error){ toast('Não enviou: '+error.message, 'erro'); return null; }
+  if(error){ toast('Não enviou: '+error.message, 'erro'); return {ok:false, erro:error.message}; }
   toast('Arquivo enviado', 'sucesso');
-  return data;
+  return {ok:true, data};
 }
 async function baixarArquivo(path, nomeArquivo){
   if(treinoBloqueia('Baixar arquivo')) return;
@@ -2560,11 +2670,11 @@ async function carregaAnexos(aba, row){
   if(!el) return;
   if(MODO_TREINO){ el.innerHTML='🎓 Modo treino — anexos não são carregados (cliente fictício).'; return; }
   if(!sb || !SESSAO){ el.innerHTML='Sem login Supabase — anexos indisponíveis neste modo.'; return; }
-  const prefixo = 'evidencia/'+aba+'/'+row+'/';
+  const prefixo = 'evidencia/'+sanitizaSegmentoPath(aba)+'/'+row+'/'; // M8: mesmo segmento sanitizado usado no upload (anexarEvidencia) — senão o list() procura no prefixo errado e nunca acha o que foi enviado
   const {data, error} = await sb.storage.from('arquivos').list(prefixo, {limit:50, sortBy:{column:'created_at',order:'desc'}});
   if(error){ el.innerHTML='Erro ao listar anexos: '+esc(error.message); return; }
   if(!data || !data.length){ el.innerHTML='Nenhum anexo ainda.'; return; }
-  el.innerHTML = data.map(f=>`<div class="lin" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0"><span>${esc(f.name)}</span><button class="btn sec" style="padding:2px 8px;font-size:11px" onclick="baixarArquivo('${esc(prefixo+f.name)}','${esc(f.name)}')">Baixar</button></div>`).join('');
+  el.innerHTML = data.map(f=>`<div class="lin" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0"><span>${esc(f.name)}</span><button class="btn sec" style="padding:2px 8px;font-size:11px" data-acao-marco="baixar-arquivo" data-path="${esc(prefixo+f.name)}" data-nome="${esc(f.name)}">Baixar</button></div>`).join('');
 }
 async function anexarEvidencia(btn){
   if(!MODAL_ATV_ABERTO) return;
@@ -2574,11 +2684,45 @@ async function anexarEvidencia(btn){
   const input = document.getElementById('ev-arquivo');
   const file = input.files[0];
   if(!file){ alert('Escolha um arquivo (imagem ou PDF) antes de anexar.'); return; }
-  const path = 'evidencia/'+aba+'/'+row+'/'+Date.now()+'_'+file.name.replace(/[^a-zA-Z0-9_.-]/g,'_');
-  const ok = await uploadParaBucket(path, file, btn);
+  const path = 'evidencia/'+sanitizaSegmentoPath(aba)+'/'+row+'/'+Date.now()+'_'+file.name.replace(/[^a-zA-Z0-9_.-]/g,'_');
+  const res = await uploadParaBucket(path, file, btn);
   input.value='';
-  if(ok) carregaAnexos(aba, row);
+  if(res.ok) carregaAnexos(aba, row);
 }
+
+// ---- listener delegado pros 8 onclick da MF-M2 que interpolavam dado de
+// fora (aba, nome de arquivo do Storage) — G2 (achado grave 25/08): montar
+// esses handlers como STRING onclick="fn('${esc(x)}')" reabre a mesma
+// classe de XSS que HTML-escapar sozinho não fecha com certeza dentro de um
+// atributo de evento inline: o navegador decodifica entidade HTML do
+// atributo (ex.: '&#39;' -> "'") ANTES de compilar aquele texto como corpo
+// de função JS, então um apóstrofo cru no dado (nome de arquivo subido
+// direto pela API do Storage, fora deste app) ainda quebra a string e
+// injeta código. data-* nunca é reinterpretado como código — o valor
+// decodificado vira só uma STRING passada como argumento de função comum.
+// Delegado em document (os elementos mudam a cada render, o listener não).
+document.addEventListener('click', function(ev){
+  const el = ev.target.closest('[data-acao-marco]');
+  if(!el) return;
+  const acao = el.dataset.acaoMarco;
+  if(acao==='streak'){
+    registrarMarco(el.dataset.aba, 'streak_'+el.dataset.etapa, {etapa:Number(el.dataset.etapa)}, el);
+  } else if(acao==='dp-analisar'){
+    analisarListaDinheiroParado(el.dataset.aba);
+  } else if(acao==='bancada-gerar'){
+    gerarBancada(el.dataset.aba);
+  } else if(acao==='placar-gerar'){
+    gerarPlacar(el.dataset.aba, el.dataset.periodo);
+  } else if(acao==='dp-registrar'){
+    registrarMarco(el.dataset.aba, 'dinheiro_parado', {contagem:Number(el.dataset.contagem), ticket_medio:Number(el.dataset.ticket), total:Number(el.dataset.total)}, el);
+  } else if(acao==='bancada-registrar'){
+    registrarBancada(el.dataset.aba, el);
+  } else if(acao==='placar-registrar'){
+    registrarPlacar(el.dataset.aba, el.dataset.periodo, el);
+  } else if(acao==='baixar-arquivo'){
+    baixarArquivo(el.dataset.path, el.dataset.nome);
+  }
+});
 
 if(MODO_APP){ iniciarApp(); } else { render(); checaTour(); }
 </script>
