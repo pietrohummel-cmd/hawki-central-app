@@ -1645,7 +1645,10 @@ var AJUSTES_LOTE_MAX_ = 30;
  * Layout da aba "Ajustes" (criada sob demanda, nunca hardcodada na planilha
  * de antemão): A=ID · B=Data (criado_em) · C=Cliente · D=Título · E=Detalhe ·
  * F=Tipo (conta|produto) · G=Prioridade (maxima|media|baixa) · H=Reportado
- * por · I=Responsável · J=Status · K=Nota · L=Atualizado em.
+ * por · I=Responsável · J=Status · K=Nota · L=Atualizado em · M=Ativo
+ * (boolean; L6 da auditoria adversarial 26/08 — não existia jeito de
+ * arquivar/excluir um ticket; M=FALSE é o "arquivado", mesma convenção de
+ * clientes.ativo/atividades.ativo no espelho Supabase, nunca linha apagada).
  *
  * DECISÃO (o plano deixou em aberto no item 2 do kickoff): o id do ticket
  * NUNCA é o número da linha — uma linha pode ser apagada/reordenada na mão
@@ -1669,16 +1672,16 @@ function _achaOuCriaAbaAjustes_() {
   var sh = ss.getSheetByName(NOME_ABA_AJUSTES);
   if (!sh) {
     sh = ss.insertSheet(NOME_ABA_AJUSTES);
-    sh.getRange(1, 1, 1, 12).setValues([[
+    sh.getRange(1, 1, 1, 13).setValues([[
       'ID', 'Data', 'Cliente', 'Título', 'Detalhe', 'Tipo', 'Prioridade',
-      'Reportado por', 'Responsável', 'Status', 'Nota', 'Atualizado em'
+      'Reportado por', 'Responsável', 'Status', 'Nota', 'Atualizado em', 'Ativo'
     ]]);
     sh.setFrozenRows(1);
-    sh.getRange(1, 1, 1, 12).setFontWeight('bold');
+    sh.getRange(1, 1, 1, 13).setFontWeight('bold');
     // texto simples nas colunas de texto livre (defesa em profundidade —
     // mesmo padrão de _novaTarefa_/_registraMarco_: nenhum prefixo de fórmula
-    // que escape da sanitização vira expressão executável). B e L ficam de
-    // fora de propósito: são timestamp de verdade (Date), não texto.
+    // que escape da sanitização vira expressão executável). B, L e M ficam de
+    // fora de propósito: B/L são timestamp de verdade (Date) e M é boolean.
     var COLS_TEXTO = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11]; // A,C,D,E,F,G,H,I,J,K
     COLS_TEXTO.forEach(function (c) { sh.getRange(1, c, 2000, 1).setNumberFormat('@'); });
     sh.setColumnWidth(4, 260); sh.setColumnWidth(5, 340);
@@ -1711,7 +1714,7 @@ function _achaLinhaAjustePorId_(sh, id) {
   return 0;
 }
 
-/** Monta o objeto de espelho a partir de UMA linha A..L já lida (getValues, 1 linha x 12 cols). */
+/** Monta o objeto de espelho a partir de UMA linha A..M já lida (getValues, 1 linha x 13 cols). */
 function _montaAjusteEspelho_(vals) {
   return {
     id: String(vals[0] || ''),
@@ -1726,13 +1729,15 @@ function _montaAjusteEspelho_(vals) {
     status: String(vals[9] || ''),
     nota: String(vals[10] || ''),
     atualizado_em: _timestampISO_(vals[11]) || new Date().toISOString(),
-    ativo: true,
+    // L6: M só existe pra marcar arquivado (false) — qualquer outra coisa
+    // (true, vazio/blank de linha antiga anterior a este campo) é ativo.
+    ativo: vals[12] !== false,
   };
 }
-/** Espelha UMA linha de ajuste já gravada (releitura A..L). Devolve 'ok' | 'sem_chave' | 'falhou: <motivo>'. */
+/** Espelha UMA linha de ajuste já gravada (releitura A..M). Devolve 'ok' | 'sem_chave' | 'falhou: <motivo>'. */
 function _espelharAjusteLinha_(sh, row) {
   try {
-    var vals = sh.getRange(row, 1, 1, 12).getValues()[0];
+    var vals = sh.getRange(row, 1, 1, 13).getValues()[0];
     var res = _supabaseUpsert_('ajustes', 'id', [_montaAjusteEspelho_(vals)]);
     return res.ok ? 'ok' : res.erro;
   } catch (err) {
@@ -1781,8 +1786,8 @@ function _ajusteCriar_(p, sbCheck) {
     var id = _gerarIdAjuste_();
     var r = sh.getLastRow() + 1;
     var agora = new Date();
-    sh.getRange(r, 1, 1, 12).setValues([[
-      id, agora, aba, v.titulo, v.detalhe, v.tipo, v.prioridade, quem, '', 'aberto', '', agora
+    sh.getRange(r, 1, 1, 13).setValues([[
+      id, agora, aba, v.titulo, v.detalhe, v.tipo, v.prioridade, quem, '', 'aberto', '', agora, true
     ]]);
     SpreadsheetApp.flush();
     var esp = _espelharAjusteLinha_(sh, r);
@@ -1830,13 +1835,13 @@ function _ajusteCriarLote_(p, sbCheck) {
         falhas.push({ idx: i, erro: 'acesso negado: cliente fora do seu escopo' }); continue;
       }
       var id = _gerarIdAjuste_();
-      linhas.push([id, agora, aba, v.titulo, v.detalhe, v.tipo, v.prioridade, quem, '', 'aberto', '', agora]);
+      linhas.push([id, agora, aba, v.titulo, v.detalhe, v.tipo, v.prioridade, quem, '', 'aberto', '', agora, true]);
       criados.push({ idx: i, id: id, aba: aba });
     }
 
     var espelho = 'ok';
     if (linhas.length) {
-      sh.getRange(r, 1, linhas.length, 12).setValues(linhas);
+      sh.getRange(r, 1, linhas.length, 13).setValues(linhas);
       SpreadsheetApp.flush();
       var itensEspelho = [];
       for (var k = 0; k < linhas.length; k++) itensEspelho.push(_montaAjusteEspelho_(linhas[k]));
@@ -1850,10 +1855,11 @@ function _ajusteCriarLote_(p, sbCheck) {
 }
 
 /**
- * op:'atualizar' — status/responsável/nota/tipo/prioridade de UM ticket já
- * existente, achado por id (nunca por linha — ver decisão no cabeçalho da
- * seção). `edits` só aceita as chaves abaixo (whitelist fechada por
- * hasOwnProperty.call); qualquer chave fora disso é ignorada, não gravada.
+ * op:'atualizar' — status/responsável/nota/tipo/prioridade/ativo (L6, este
+ * último só admin) de UM ticket já existente, achado por id (nunca por linha
+ * — ver decisão no cabeçalho da seção). `edits` só aceita as chaves abaixo
+ * (whitelist fechada por hasOwnProperty.call); qualquer chave fora disso é
+ * ignorada, não gravada.
  */
 function _ajusteAtualizar_(p, sbCheck) {
   var id = String(p.id || '').trim();
@@ -1898,6 +1904,17 @@ function _ajusteAtualizar_(p, sbCheck) {
       var vNota = _sanitizaTexto_(edits.nota, 500);
       if (!vNota.ok) return _json({ ok: false, erro: 'nota inválida: ' + vNota.erro });
       sh.getRange(row, 11).setValue(vNota.valor); mudou = true;
+    }
+    // L6 (achado leve da auditoria adversarial 26/08): não existia jeito de
+    // arquivar/excluir um ticket. 'ativo' entra na whitelist só pra admin
+    // (nunca cs — proteção contra CS escondendo ticket que não quer que
+    // apareça na fila) e vira coluna M da aba (ver decisão no cabeçalho de
+    // _achaOuCriaAbaAjustes_) — nunca apaga a linha, mesma régua de
+    // clientes/atividades.
+    if (Object.prototype.hasOwnProperty.call(edits, 'ativo')) {
+      if (sbCheck.cargo !== 'admin') return _json({ ok: false, erro: 'acesso negado: arquivar/reativar ticket é só admin' });
+      if (edits.ativo !== true && edits.ativo !== false) return _json({ ok: false, erro: 'ativo inválido: precisa ser true ou false' });
+      sh.getRange(row, 13).setValue(edits.ativo); mudou = true;
     }
 
     if (!mudou) return _json({ ok: false, erro: 'nenhum campo válido em edits' });
@@ -2004,14 +2021,27 @@ function doPost(e) {
       // por coluna: mesma régua do resto da casa (atividade/nota até 200/1000;
       // tipo/papel são siglas curtas).
       var SET_ATIVIDADE_MAXLEN_ = { B: 20, C: 30, D: 200, H: 200, I: 1000 };
+      // M1 (achado GRAVE da auditoria adversarial, 26/08): esta ação
+      // DESCARTAVA edição inválida em silêncio (`continue`) e ainda assim
+      // devolvia ok:true — o front pintava o toast verde "Gravado" mesmo
+      // quando o valor digitado (ex.: nota começando com "- "/"+"/"@", ou
+      // com 2 linhas) nunca chegou na planilha. Perda de dado com
+      // confirmação verde é exatamente a classe de bug corrigida em 20/08
+      // noutro caminho (campo `espelho`) — não podia sobreviver aqui.
+      // Agora cada edição rejeitada entra em `ignorados[]` (coluna + motivo)
+      // e viaja de volta no JSON pro front avisar explicitamente qual campo
+      // não gravou e por quê, em vez de fingir sucesso total. Não vira
+      // ok:false sozinho porque outras colunas da MESMA chamada podem ter
+      // gravado normalmente — dizer "falhou" apagaria essa informação.
+      var ignorados = [];
       for (var i = 0; i < (p.edits || []).length; i++) {
         var col = String(p.edits[i][0]).toUpperCase();
-        if (!COLS_OK[col]) continue;
+        if (!COLS_OK[col]) continue; // fora da permissão do cargo — não é "dado perdido", é escopo (continua silencioso)
         var val = p.edits[i][1];
         if (col === 'E') {
           // só data BR válida ou vazio (limpa o prazo) — nunca fórmula/texto
           // livre; G já é fórmula que lê E ao vivo, recalcula sozinho.
-          if (val !== '' && !/^\d{2}\/\d{2}\/\d{4}$/.test(String(val))) continue;
+          if (val !== '' && !/^\d{2}\/\d{2}\/\d{4}$/.test(String(val))) { ignorados.push({ col: 'E', erro: 'data inválida' }); continue; }
           sh.getRange(row, 5).setNumberFormat('dd/mm/yyyy').setValue(val);
           continue;
         }
@@ -2020,15 +2050,17 @@ function doPost(e) {
           // nunca deixa a data de feito ficar como string solta — _dataISO_
           // do espelho já ganhou um fallback de string, mas é defesa dupla
           // melhor que a célula nem virar texto.
-          if (val !== '' && !/^\d{2}\/\d{2}\/\d{4}$/.test(String(val))) continue;
+          if (val !== '' && !/^\d{2}\/\d{2}\/\d{4}$/.test(String(val))) { ignorados.push({ col: 'F', erro: 'data inválida' }); continue; }
           sh.getRange(row, 6).setNumberFormat('dd/mm/yyyy').setValue(val);
           continue;
         }
         // daqui pra baixo só sobra texto livre (B,C,D,H,I) — sanitiza SEMPRE,
-        // força texto simples (defesa em profundidade) e ignora esta edição
-        // isolada (não derruba as outras) se o valor for hostil/grande demais.
+        // força texto simples (defesa em profundidade). O front (build_central.py,
+        // normalizaTextoLivre) já normaliza ANTES de mandar pra que o caso
+        // legítimo passe por aqui de primeira — isto continua sendo a
+        // segunda trava (defesa nas duas pontas, G1), não a única.
         var vTxtSet = _sanitizaTexto_(val, SET_ATIVIDADE_MAXLEN_[col] || 200);
-        if (!vTxtSet.ok) continue;
+        if (!vTxtSet.ok) { ignorados.push({ col: col, erro: vTxtSet.erro }); continue; }
         sh.getRange(col + row).setNumberFormat('@').setValue(vTxtSet.valor);
       }
       // espelha a linha inteira (releitura A..I) pra pegar o status
@@ -2037,7 +2069,9 @@ function doPost(e) {
       // `espelho` se o Supabase falhar.
       SpreadsheetApp.flush();
       var espelhoSet = _espelharLinha_(sh, p.aba, row);
-      return _json({ ok: true, espelho: espelhoSet });
+      var respostaSet = { ok: true, espelho: espelhoSet };
+      if (ignorados.length) respostaSet.ignorados = ignorados;
+      return _json(respostaSet);
     }
     if (p.acao === 'nova_tarefa') {
       return _novaTarefa_(p, sh, sbCheck);
@@ -2271,12 +2305,16 @@ function _instanciarViaApi_(p) {
 
 // =====================================================================
 // EXPURGO DO ARQUIVO BRUTO (MF-M2, guardrail 3 do §1 do plano) — apaga só
-// os arquivos do prefixo `lista/` (a lista de reativação que o CS upou) com
-// mais de 90 dias. NUNCA toca em `evidencia/` (fotos/prints de atividade —
-// ficam pra sempre, não são o dado sensível em questão). Os AGREGADOS (a
-// mensagem "dinheiro parado" já gerada) e o registro em public.marcos/aba
-// Marcos ficam pra sempre — só o arquivo bruto (a lista com nome/telefone
-// de paciente) expira.
+// os arquivos dos prefixos `lista/` (a lista de reativação que o CS upou) e
+// `ajuste/` (M4, achado médio da auditoria adversarial 26/08: anexo de
+// ticket da fila 🔧 Ajustes é print de conversa de grupo do WhatsApp — nome/
+// telefone de paciente pode aparecer na imagem igual na lista de reativação;
+// ficava de fora do expurgo original e nunca expirava) com mais de 90 dias.
+// NUNCA toca em `evidencia/` (fotos/prints de atividade — ficam pra sempre,
+// não são o dado sensível em questão). Os AGREGADOS (a mensagem "dinheiro
+// parado" já gerada) e o registro em public.marcos/aba Marcos ou o próprio
+// ticket em public.ajustes/aba Ajustes ficam pra sempre — só o arquivo bruto
+// (a lista ou o print com nome/telefone de paciente) expira.
 //
 // ACIONADOR — instalação manual (precisa de humano; não existe jeito de
 // instalar acionador instalável só com código, mesma limitação do
@@ -2299,7 +2337,12 @@ function _instanciarViaApi_(p) {
 // Sem este passo manual, a função fica pronta e correta mas NUNCA roda
 // sozinha — é exatamente a mesma limitação documentada pro onEditCentral.
 // =====================================================================
-var PREFIXO_LISTA_ = 'lista/';
+// M4: era só ['lista/'] — 'ajuste/<aba>/<id>/<arquivo>' entrou junto (mesma
+// janela de 90 dias, ver comentário do bloco acima). Cada prefixo pode ter
+// profundidade diferente (lista/ tem 2 níveis até o arquivo, ajuste/ tem 3
+// por causa da pasta do id do ticket) — _storageListarArquivosRecursivo_
+// desce até achar arquivo de verdade (item com `.id`), não assume nível fixo.
+var PREFIXOS_EXPURGO_ = ['lista/', 'ajuste/'];
 var BUCKET_ARQUIVOS_ = 'arquivos';
 var EXPURGO_DIAS_ = 90;
 var STORAGE_LIST_LIMIT_ = 1000; // teto de itens por chamada da Storage API — L16
@@ -2359,6 +2402,36 @@ function _storageListar_(prefixo, cab) {
   return tudo;
 }
 
+/**
+ * Lista TODOS os arquivos (recursivo, qualquer profundidade) sob um prefixo
+ * do bucket — 'lista/<aba>/<arquivo>' tem 2 níveis, 'ajuste/<aba>/<id>/<arquivo>'
+ * tem 3 (M4: um nível fixo não alcançava o arquivo de ajuste, que nasce 1
+ * pasta mais fundo por causa do id do ticket). Cada item sem `.id` é pasta —
+ * desce; com `.id` é arquivo de verdade — entra no resultado com created_at
+ * pra quem chama decidir o corte de data. Falha de listagem em QUALQUER
+ * ponto da árvore marca `ctx.falhouSubpasta=true` (nunca derruba a coleta
+ * inteira por causa de 1 pasta ruim) — mesmo espírito do `null` de
+ * _storageListar_ (achado médio 25/08): "não consegui listar" nunca vira
+ * silenciosamente "0 arquivo aqui".
+ */
+function _storageListarArquivosRecursivo_(prefixo, cab, ctx) {
+  var pagina = _storageListar_(prefixo, cab);
+  if (pagina === null) {
+    ctx.falhouSubpasta = true;
+    Logger.log('_storageListarArquivosRecursivo_: falha ao listar ' + prefixo + ' — pulando esta pasta nesta rodada (não conto como "0 arquivos").');
+    return [];
+  }
+  var arquivos = [];
+  pagina.forEach(function (item) {
+    if (item.id) {
+      arquivos.push({ path: prefixo + item.name, created_at: item.created_at });
+    } else {
+      arquivos = arquivos.concat(_storageListarArquivosRecursivo_(prefixo + item.name + '/', cab, ctx));
+    }
+  });
+  return arquivos;
+}
+
 function expurgarListasAntigas() {
   var key = _props().getProperty('SUPABASE_SERVICE_KEY');
   if (!key) { Logger.log('expurgarListasAntigas: sem SUPABASE_SERVICE_KEY configurada (Script Properties).'); return 'sem_chave'; }
@@ -2367,42 +2440,40 @@ function expurgarListasAntigas() {
   if (ehJwt) cab.Authorization = 'Bearer ' + key;
 
   var corte = new Date(Date.now() - EXPURGO_DIAS_ * 86400000);
-  var aApagar = [];
+  var ctx = { falhouSubpasta: false };
+  var candidatos = [];
 
-  // M6 (achado médio 25/08): _storageListar_ agora devolve `null` em erro —
-  // aborta com mensagem clara em vez de tratar "não consegui listar" como
-  // "a pasta está vazia" (o bug original: [] servia pros dois casos, e
-  // expurgarListasAntigas() sempre concluía "nada a apagar", nunca
-  // acionando alarme nenhum numa falha real de token/rede).
-  var pastasCliente = _storageListar_(PREFIXO_LISTA_, cab);
-  if (pastasCliente === null) {
-    Logger.log('expurgarListasAntigas: ABORTADO — não consegui listar ' + PREFIXO_LISTA_ + ' (ver log de _storageListar_ acima). NÃO é "nada a apagar".');
-    return 'erro: falha ao listar ' + PREFIXO_LISTA_ + ' — ver log';
-  }
-  var falhouSubpasta = false;
-  pastasCliente.forEach(function (pasta) {
-    if (pasta.id) return; // arquivo solto direto em lista/ (não deveria existir com o path do §1) — ignora, não apaga por engano
-    var prefixoCliente = PREFIXO_LISTA_ + pasta.name + '/';
-    var arquivos = _storageListar_(prefixoCliente, cab);
-    if (arquivos === null) {
-      falhouSubpasta = true;
-      Logger.log('expurgarListasAntigas: falha ao listar ' + prefixoCliente + ' — pulando esta pasta nesta rodada (não conto como "0 arquivos").');
-      return;
+  // M6 (achado médio 25/08): _storageListar_ devolve `null` em erro — aborta
+  // com mensagem clara em vez de tratar "não consegui listar" como "a pasta
+  // está vazia". O TOPO de cada prefixo (lista/, ajuste/) falhar é sistêmico
+  // (token/rede) e aborta a função inteira, igual ao comportamento original;
+  // falha numa pasta mais funda (de 1 cliente/ticket específico) só marca
+  // falhouSubpasta (M4: mantém a mesma tolerância de antes, agora pros 2
+  // prefixos e em qualquer profundidade).
+  for (var p = 0; p < PREFIXOS_EXPURGO_.length; p++) {
+    var prefixoBase = PREFIXOS_EXPURGO_[p];
+    var topo = _storageListar_(prefixoBase, cab);
+    if (topo === null) {
+      Logger.log('expurgarListasAntigas: ABORTADO — não consegui listar ' + prefixoBase + ' (ver log de _storageListar_ acima). NÃO é "nada a apagar".');
+      return 'erro: falha ao listar ' + prefixoBase + ' — ver log';
     }
-    arquivos.forEach(function (a) {
-      if (!a.id) return; // subpasta
-      var criado = a.created_at ? new Date(a.created_at) : null;
-      if (!criado || criado >= corte) return; // ainda dentro dos 90 dias
-      aApagar.push(prefixoCliente + a.name);
+    topo.forEach(function (item) {
+      if (item.id) { candidatos.push({ path: prefixoBase + item.name, created_at: item.created_at }); return; } // arquivo solto direto na raiz do prefixo (não deveria existir com o path do §1) — expurga igual se vencido
+      candidatos = candidatos.concat(_storageListarArquivosRecursivo_(prefixoBase + item.name + '/', cab, ctx));
     });
-  });
+  }
+
+  var aApagar = candidatos.filter(function (a) {
+    var criado = a.created_at ? new Date(a.created_at) : null;
+    return criado && criado < corte; // ainda dentro dos 90 dias fica de fora
+  }).map(function (a) { return a.path; });
 
   if (!aApagar.length) {
-    if (falhouSubpasta) {
-      Logger.log('expurgarListasAntigas: ABORTADO — pelo menos uma pasta de cliente falhou ao listar; não confirmo "nada a apagar" nessas condições. Rode de novo.');
+    if (ctx.falhouSubpasta) {
+      Logger.log('expurgarListasAntigas: ABORTADO — pelo menos uma pasta falhou ao listar; não confirmo "nada a apagar" nessas condições. Rode de novo.');
       return 'erro: falha parcial ao listar subpastas — rode de novo';
     }
-    Logger.log('expurgarListasAntigas: nada a apagar (0 arquivo de lista/ com mais de ' + EXPURGO_DIAS_ + ' dias).');
+    Logger.log('expurgarListasAntigas: nada a apagar (0 arquivo de ' + PREFIXOS_EXPURGO_.join(' ou ') + ' com mais de ' + EXPURGO_DIAS_ + ' dias).');
     return JSON.stringify({ apagados: 0 });
   }
 
@@ -2415,7 +2486,7 @@ function expurgarListasAntigas() {
   });
   var resumo = { tentados: aApagar.length, http: del.getResponseCode(), caminhos: aApagar.slice(0, 20) };
   if (del.getResponseCode() >= 300) resumo.erro = del.getContentText().slice(0, 300);
-  if (falhouSubpasta) resumo.aviso = 'pelo menos 1 pasta de cliente falhou ao listar nesta rodada — pode haver arquivo vencido que não entrou nesta lista';
+  if (ctx.falhouSubpasta) resumo.aviso = 'pelo menos 1 pasta falhou ao listar nesta rodada — pode haver arquivo vencido que não entrou nesta lista';
   Logger.log('expurgarListasAntigas: ' + JSON.stringify(resumo));
   return JSON.stringify(resumo);
 }
