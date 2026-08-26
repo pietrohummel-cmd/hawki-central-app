@@ -219,6 +219,26 @@ th{color:var(--faint);font-weight:600;font-size:10px;letter-spacing:.08em;text-t
 .fitem .fx{margin-left:auto;display:flex;gap:6px;align-items:center;flex-shrink:0}
 .fitem.realce-novo{animation:realceNovo 1.3s ease-out 2}
 @keyframes realceNovo{0%{background:rgba(255,140,66,.28)}100%{background:transparent}}
+/* 🔧 Ajustes */
+.p-pmax{background:rgba(248,81,73,.16);color:var(--vermelho)}
+.p-pmed{background:rgba(227,179,65,.16);color:var(--amarelo)}
+.p-pbaixa{background:var(--panel2);color:var(--muted)}
+.ajt-resumo{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.ajt-chip{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 12px;cursor:pointer;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px;min-width:110px}
+.ajt-chip:hover{border-color:var(--laranja)}
+.ajt-chip.on{border-color:var(--laranja);color:var(--laranja)}
+.ajt-chip b{font-size:17px;color:var(--text)}
+.ajt-item{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-left:3px solid var(--ec,var(--border));border-radius:10px;background:var(--card);padding:10px 12px;margin-bottom:8px;cursor:pointer}
+.ajt-item:hover{border-color:var(--laranja)}
+.ajt-item .corpo{min-width:0;flex:1}
+.ajt-item .tit{font-size:13px;font-weight:600}
+.ajt-item small{display:block;color:var(--faint);font-size:11px;margin-top:2px}
+.ajt-item .fx{display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+.ajt-item.realce-novo{animation:realceNovo 1.3s ease-out 2}
+.ajl-grupo{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:var(--panel2)}
+.ajl-grupo .cab{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.ajl-item-prev{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid var(--border)}
+.ajl-item-prev:first-of-type{border-top:none}
 /* kanban */
 .kb{display:grid;grid-template-columns:repeat(4,minmax(210px,1fr));gap:10px;overflow-x:auto}
 .kbcol{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px;min-width:210px}
@@ -332,6 +352,7 @@ html.modo-treino .topbar{top:40px}
     <div class="ngroup"><div class="glbl">Visão geral</div>
       <div class="nitem" data-v="dashboard">▦ Dashboard</div>
       <div class="nitem" data-v="clientes">▢ Clientes <span class="bdg" id="b-cli"></span></div>
+      <div class="nitem" data-v="ajustes" id="nav-ajustes">🔧 Ajustes <span class="bdg" id="b-ajt" style="display:none"></span></div>
       <div class="nitem" data-v="cs">☺ Por Sucesso do Cliente</div>
     </div>
     <div class="ngroup"><div class="glbl">Planejamento</div>
@@ -373,6 +394,7 @@ html.modo-treino .topbar{top:40px}
           <option value="feito">Concluído</option>
           <option value="cliente">Aguardando cliente</option>
         </select>
+        <button class="btn sec" id="ajuste-rapido-btn">🔧 + Ajuste</button>
         <button class="btn sec" id="nova-tarefa-btn">+ Nova tarefa</button>
         <button class="btn" id="novo">+ Novo cliente</button>
       </div>
@@ -418,6 +440,50 @@ html.modo-treino .topbar{top:40px}
 
 <!-- modal atividade -->
 <div class="overlay" id="ov-atv"><div class="modal" id="atv-corpo"></div></div>
+
+<!-- 🔧 Ajustes — captura rápida (fluxo PRINCIPAL): colar mensagem crua do
+     WhatsApp OU escrever direto; título/detalhe propostos ficam SEMPRE
+     editáveis antes de criar (nunca cria sem revisão humana). -->
+<div class="overlay" id="ov-ajt-rapido"><div class="modal">
+  <span class="fecha" onclick="fecha('ov-ajt-rapido')">✕</span>
+  <h2>🔧 Novo ajuste</h2><div class="sub">Registro rápido — cole a mensagem do WhatsApp ou escreva direto</div>
+  <div class="mgrid">
+    <div class="mfull"><label>Colar mensagem do WhatsApp (atalho — opcional)</label>
+      <textarea id="ajr-colar" placeholder="Cole aqui a mensagem crua do grupo, com ou sem cabeçalho de encaminhamento..." style="min-height:64px"></textarea>
+      <div style="margin-top:6px"><button class="btn sec" type="button" id="ajr-processar-btn">Extrair título e detalhe</button></div>
+    </div>
+    <div class="mfull"><label>Cliente</label><select id="ajr-cliente"></select></div>
+    <div class="mfull"><label>Título (revise antes de criar)</label><input id="ajr-titulo" maxlength="200" placeholder="Ex: Sofia agendando na agenda errada"></div>
+    <div class="mfull"><label>Descreva o ajuste: o que a Sofia fez de errado e o que deveria fazer</label>
+      <textarea id="ajr-detalhe" maxlength="500" placeholder="Contexto completo pra quem for aplicar entender sem precisar caçar no grupo..." style="min-height:80px"></textarea></div>
+    <div><label>Tipo</label><select id="ajr-tipo"><option value="conta">Conta (a gente ajusta o bot)</option><option value="produto">Produto (vira chamado GPI)</option></select></div>
+    <div><label>Prioridade</label><select id="ajr-prioridade"><option value="maxima">🔴 Máxima</option><option value="media" selected>🟡 Média</option><option value="baixa">◽ Baixa</option></select></div>
+  </div>
+  <div id="ajr-aviso" class="mnote" style="color:var(--amarelo);margin-top:8px"></div>
+  <div id="ajr-erro" class="mnote" style="color:var(--vermelho);margin-top:8px"></div>
+  <div class="mfoot">
+    <button class="btn sec" id="ajr-lote-btn" title="Vários clientes de uma vez, formato da listinha do WhatsApp">📋 Colar lista (vários clientes)</button>
+    <button class="btn sec" onclick="fecha('ov-ajt-rapido')">Cancelar</button>
+    <button class="btn" id="ajr-salvar-btn">Criar ajuste</button>
+  </div>
+</div></div>
+
+<!-- 🔧 Ajustes — colador de listinha (modo SECUNDÁRIO): vários clientes de
+     uma vez, formato "**AJUSTES CLIENTE:**" + itens numerados. -->
+<div class="overlay" id="ov-ajt-lote"><div class="modal" style="max-width:720px">
+  <span class="fecha" onclick="fecha('ov-ajt-lote')">✕</span>
+  <h2>📋 Colar lista do WhatsApp</h2><div class="sub">Modo secundário — vários clientes de uma vez (rotina das 17h30)</div>
+  <textarea id="ajl-texto" style="width:100%;min-height:130px" placeholder="**AJUSTES SORRISO PRIME:**&#10;1. ...&#10;2. ...&#10;&#10;**AJUSTES ORAL UNIC:**&#10;1. ..."></textarea>
+  <div style="margin:10px 0"><button class="btn sec" id="ajl-analisar-btn">Analisar</button></div>
+  <div id="ajl-preview"></div>
+  <div id="ajl-aviso" class="mnote" style="color:var(--amarelo);margin-top:8px"></div>
+  <div id="ajl-erro" class="mnote" style="color:var(--vermelho);margin-top:8px"></div>
+  <div class="mfoot"><button class="btn sec" onclick="fecha('ov-ajt-lote')">Cancelar</button><button class="btn" id="ajl-criar-btn" style="display:none">Criar tickets</button></div>
+</div></div>
+
+<!-- 🔧 Ajustes — detalhe/edição de UM ticket (atribuição, status, nota,
+     tipo, prioridade, mensagem pronta, anexo). -->
+<div class="overlay" id="ov-ajt"><div class="modal" id="ajt-corpo" style="max-width:620px"></div></div>
 
 <!-- MODO_APP: tela de login/cadastro/aguardando aprovação -->
 <div class="tela-boot" id="tela-boot"></div>
@@ -661,7 +727,13 @@ async function gasSave(payload, btn){
     await new Promise(r=>setTimeout(r,350));
     if(btn){btn.textContent='✓ Salvo (treino)';setTimeout(()=>{btn.textContent=old;btn.disabled=false;},1200);}
     toast('Modo treino — nada foi salvo', 'info');
-    return {ok:true, row:TREINO_ROW_SEQ--, aba:payload.aba};
+    // 🔧 Ajustes 'criar_lote' devolve uma forma diferente (criados[]/falhas[])
+    // do resto das ações — precisa de um fake dedicado, não só {row,aba}.
+    if(payload.acao==='ajuste' && payload.op==='criar_lote'){
+      const criados=(payload.itens||[]).map((it,idx)=>({idx, id:'aj_treino_'+Date.now()+'_'+idx, aba: it.cliente_aba}));
+      return {ok:true, criados, falhas:[], espelho:'ok'};
+    }
+    return {ok:true, row:TREINO_ROW_SEQ--, aba:payload.aba, id:'aj_treino_'+Date.now()+'_'+Math.abs(TREINO_ROW_SEQ)};
   }
   const url=API();
   if(!url){ toast('Escrita não configurada — abra Configurações e siga os 3 passos do web app.', 'erro'); alert('Escrita ainda não configurada.\n\nSetup de 2 min (uma vez): abrir Configurações no menu e seguir os 3 passos do web app.'); return false; }
@@ -681,6 +753,22 @@ async function gasSave(payload, btn){
       if(payload.acao==='set' && payload.aba && payload.row!=null) marcaAcaoLocal(payload.aba, payload.row);
       else if(payload.acao==='nova_tarefa' && j.aba!=null && j.row!=null) marcaAcaoLocal(j.aba, j.row);
       else if(payload.acao==='cel' && payload.aba) marcaAcaoLocalCliente(payload.aba);
+    }
+    if(typeof marcaAcaoLocalAjuste==='function' && payload.acao==='ajuste'){
+      if((payload.op==='criar'||payload.op==='atualizar') && j.id) marcaAcaoLocalAjuste(j.id);
+      else if(payload.op==='atualizar' && payload.id) marcaAcaoLocalAjuste(payload.id);
+      else if(payload.op==='criar_lote' && j.criados) j.criados.forEach(c=>marcaAcaoLocalAjuste(c.id));
+    }
+    // M1 (achado GRAVE da auditoria adversarial 26/08): a ação 'set' podia
+    // devolver ok:true tendo IGNORADO 1+ edição (valor não passou na
+    // validação do servidor — hostil de verdade, ou algo que a normalização
+    // do front não pegou) e o toast pintava "Gravado" verde do mesmo jeito,
+    // escondendo a perda. Agora o servidor devolve `ignorados` com coluna +
+    // motivo; nunca mais em silêncio.
+    const COL_LABEL_SET_ = {B:'Tipo', C:'Papel', D:'Atividade', E:'Prazo', F:'Data de feito', H:'Motivo', I:'Nota'};
+    if(j.ignorados && j.ignorados.length){
+      const lista = j.ignorados.map(ig=>`${COL_LABEL_SET_[ig.col]||ig.col} (${ig.erro})`).join(', ');
+      toast('Atenção: não salvou — ' + lista, 'erro');
     }
     // campo 'espelho' (GAS): honestidade > otimismo — se o espelho Supabase
     // não gravou (sem service key configurada, ou a própria escrita falhou),
@@ -847,6 +935,16 @@ async function carregaDados(){
     cs_lista: Array.from(new Set(clientes.map(c=>c.cs).filter(Boolean))),
     clientes, modelos:{sofia:{aba:'',gid:0,fases:[]}, trafego:{aba:'',gid:0,fases:[]}}
   };
+  // 🔧 Ajustes: só quem PODE ver (RLS já barra gt/automacao no servidor —
+  // esta checagem no front é só pra não gastar 1 request à toa pra quem
+  // sabidamente não vê nada).
+  if(podeVerAjustes()){
+    const {data:ajustesRows, error:e3} = await sb.from('ajustes').select('*').eq('ativo',true);
+    if(e3) console.error('carregaDados (ajustes):', e3.message);
+    else AJUSTES = ajustesRows||[];
+  } else {
+    AJUSTES = [];
+  }
   aplicaCabecalho(); montaFiltros(); aplicaPerfilTopo(); aplicaVisibilidadeCargo();
   fechaBoot(); VIEW='dashboard'; CLI=null; render();
   await checaTour();
@@ -1067,6 +1165,11 @@ async function recarregaDadosSilencioso(){
   D.clientes = clientes;
   D.cs_lista = Array.from(new Set(clientes.map(c=>c.cs).filter(Boolean)));
   if(CLI && !clientes.some(c=>c.aba===CLI)) CLI=null; // cliente sumiu (desativado) — evita tela quebrada
+  if(podeVerAjustes()){
+    const {data:ajustesRows, error:e3} = await sb.from('ajustes').select('*').eq('ativo',true);
+    if(e3) console.error('recarregaDadosSilencioso (ajustes):', e3.message);
+    else AJUSTES = ajustesRows||[];
+  }
   montaFiltros();
   rerenderPreservandoEstado();
 }
@@ -1101,6 +1204,7 @@ function iniciaRealtime(){
   RT_CHANNEL = sb.channel('central-realtime')
     .on('postgres_changes', {event:'*', schema:'public', table:'atividades'}, handleRealtimeAtividade)
     .on('postgres_changes', {event:'*', schema:'public', table:'clientes'}, handleRealtimeCliente)
+    .on('postgres_changes', {event:'*', schema:'public', table:'ajustes'}, handleRealtimeAjuste)
     .subscribe(status=>{
       if(status==='SUBSCRIBED'){ RT_STATUS='live'; atualizaSeloRT(); }
       else if(status==='CLOSED'){ RT_STATUS='off'; atualizaSeloRT(); }
@@ -1136,6 +1240,12 @@ function aplicaVisibilidadeCargo(){
   const novoBtn=document.getElementById('novo'); if(novoBtn) novoBtn.style.display = admin? '':'none';
   const novaTarefaBtn=document.getElementById('nova-tarefa-btn'); if(novaTarefaBtn) novaTarefaBtn.style.display = podeCriarTarefa? '':'none';
   document.querySelectorAll('.cli-nova-tarefa').forEach(b=>b.style.display = podeCriarTarefa? '':'none');
+  // 🔧 Ajustes: admin/cs — gt/automacao não veem nem o item de menu nem o
+  // botão global de captura rápida (que fica no topbar, visível em QUALQUER
+  // tela, por isso não basta esconder só dentro do render() da view).
+  const ajtNav=document.getElementById('nav-ajustes'); if(ajtNav) ajtNav.style.display = podeVerAjustes()? '':'none';
+  const ajtBtn=document.getElementById('ajuste-rapido-btn'); if(ajtBtn) ajtBtn.style.display = podeVerAjustes()? '':'none';
+  document.querySelectorAll('.cli-ajuste-btn').forEach(b=>b.style.display = podeVerAjustes()? '':'none');
 }
 function iniciarApp(){
   telaBoot(`<div class="authcard" style="text-align:center"><b>Carregando…</b></div>`);
@@ -1419,13 +1529,14 @@ function dadosTreino(){
 }
 function treinoEntrar(){
   if(MODO_TREINO) return;
-  fecha('ov-novo'); fecha('ov-atv'); fecha('ov-tarefa');
+  fecha('ov-novo'); fecha('ov-atv'); fecha('ov-tarefa'); fecha('ov-ajt-rapido'); fecha('ov-ajt-lote'); fecha('ov-ajt');
   // Modo treino opera sobre dado fictício — realtime tem que desligar antes
   // de trocar D, senão um evento de fora reescreveria o cliente/atividade
   // sandbox por engano (regra dura [3]).
   pararRealtime();
   D_REAL=D; F_TREINO_BACK={...F};
   D=dadosTreino();
+  AJUSTES_REAL=AJUSTES; AJUSTES=dadosTreinoAjustes();
   F.cs='all'; F.cliente='all'; F.periodo='all'; F.status='all'; F.de=''; F.ate='';
   MODO_TREINO=true;
   document.documentElement.classList.add('modo-treino');
@@ -1434,8 +1545,9 @@ function treinoEntrar(){
 }
 function treinoSair(){
   if(!MODO_TREINO) return;
-  fecha('ov-novo'); fecha('ov-atv'); fecha('ov-tarefa');
+  fecha('ov-novo'); fecha('ov-atv'); fecha('ov-tarefa'); fecha('ov-ajt-rapido'); fecha('ov-ajt-lote'); fecha('ov-ajt');
   D=D_REAL; D_REAL=null;
+  AJUSTES=AJUSTES_REAL||[]; AJUSTES_REAL=null;
   if(F_TREINO_BACK) Object.assign(F,F_TREINO_BACK);
   F_TREINO_BACK=null;
   MODO_TREINO=false;
@@ -1616,14 +1728,26 @@ function abreAtv(cAba,row){
     // atividades.papel). Só reescreve a coluna C quando o papel já era
     // simples (sem '+').
     const eraComposto = String(i.papel||'').indexOf('+')!==-1;
-    const edits=[['D',g('at-ativ')],['B',g('at-tipo')],['F',feitoISO? fmtBRfull(feitoISO):''],['H',g('at-motivo')==='—'?'':g('at-motivo')]];
+    // M1/G1 (combinado, achado GRAVE+MÉDIO 26/08): 'set' sanitiza no
+    // servidor e ATÉ 26/08 descartava valor legítimo em silêncio
+    // ("- aguardando cliente", "+55 11 99999-9999 ligou", "@William confere
+    // isso", nota com 2 linhas) — normaliza aqui, ANTES de mandar, pro caso
+    // legítimo gravar de primeira (defesa dupla: servidor continua barrando
+    // o que sobrar de hostil de verdade).
+    const nAtiv = normalizaTextoLivre(g('at-ativ'), 200);
+    document.getElementById('at-ativ').value = nAtiv.valor;
+    const edits=[['D',nAtiv.valor],['B',g('at-tipo')],['F',feitoISO? fmtBRfull(feitoISO):''],['H',g('at-motivo')==='—'?'':g('at-motivo')]];
     if(!eraComposto) edits.push(['C',sigla]);
     // prazo de tarefa avulsa é editável (achado médio 20/08) — o GAS só
     // aceita a coluna E quando a linha é 'avulsa' (ver instanciador.gs).
     if(ehAvulsa){ const novoPrazo=g('at-prazo'); edits.push(['E', novoPrazo? fmtBRfull(novoPrazo):'']); }
-    const nota=g('at-nota').trim(); if(nota) edits.push(['I',(i.verif? i.verif+' · ':'')+nota]);
+    const notaBruta=g('at-nota').trim();
+    if(notaBruta){
+      const nNota = normalizaTextoLivre((i.verif? i.verif+' · ':'')+notaBruta, 1000);
+      edits.push(['I', nNota.valor]);
+    }
     if(await gasSave({acao:'set',aba:c.aba,row:i.row,edits}, ev.target)){
-      i.ativ=g('at-ativ'); i.tipo=g('at-tipo');
+      i.ativ=nAtiv.valor; i.tipo=g('at-tipo');
       if(!eraComposto){ i.papel=sigla; i.pessoas=[pessoa]; }
       if(ehAvulsa) i.prev=g('at-prazo')||'';
       i.feito=feitoISO; i.motivo=g('at-motivo')==='—'?'':g('at-motivo');
@@ -1638,7 +1762,7 @@ const fmtBRfull = iso=>iso.split('-').reverse().join('/');
 
 // ---- navegação ----
 let VIEW='dashboard', CLI=null, ABA_CLI='etapas';
-const TITULOS={dashboard:['Visão geral','Dashboard'],clientes:['Clientes','Lista de Projetos'],cs:['Visão geral','Por Sucesso do Cliente'],calendario:['Planejamento','Calendário'],celebracoes:['Planejamento','Celebrações'],responsaveis:['Equipe','Responsáveis'],modelo:['Equipe','Modelo de Prazos'],config:['Sistema','Configurações'],usuarios:['Sistema','Usuários']};
+const TITULOS={dashboard:['Visão geral','Dashboard'],clientes:['Clientes','Lista de Projetos'],ajustes:['Visão geral','🔧 Ajustes'],cs:['Visão geral','Por Sucesso do Cliente'],calendario:['Planejamento','Calendário'],celebracoes:['Planejamento','Celebrações'],responsaveis:['Equipe','Responsáveis'],modelo:['Equipe','Modelo de Prazos'],config:['Sistema','Configurações'],usuarios:['Sistema','Usuários']};
 document.querySelectorAll('.nitem').forEach(n=>{
   if(n.dataset.action==='tour'){ n.onclick=()=>tourIniciar(); return; }
   if(n.dataset.action==='treino'){ n.onclick=()=>{ MODO_TREINO? treinoSair() : treinoEntrar(); }; return; }
@@ -1667,10 +1791,28 @@ syncSideToggle();
 function render(){
   if(!D) return;
   if(MODO_APP && PERFIL && PERFIL.cargo!=='admin' && (VIEW==='responsaveis'||VIEW==='usuarios')) VIEW='dashboard';
+  // 🔧 Ajustes: só admin/cs (mesma régua de podeVerAjustes) — gt/automacao
+  // nunca deveriam chegar aqui (nav some via aplicaVisibilidadeCargo), mas
+  // um VIEW guardado de sessão anterior (ou digitado na mão) não pode furar.
+  if(MODO_APP && PERFIL && !podeVerAjustes() && VIEW==='ajustes') VIEW='dashboard';
   const todos = D.clientes.flatMap(todosItens);
   const qwT = todos.filter(i=>i.tipo==='QW');
   document.getElementById('b-cli').textContent = D.clientes.length;
   document.getElementById('b-qw').textContent = qwT.filter(i=>i.cls==='feito').length+'/'+qwT.length;
+  const bAjt = document.getElementById('b-ajt');
+  if(bAjt){
+    const abertosAjt = AJUSTES.filter(a=>a.status==='aberto'||a.status==='em_ajuste');
+    if(abertosAjt.length){
+      bAjt.textContent = abertosAjt.length;
+      bAjt.style.display = 'inline-block';
+      const temMaxima = abertosAjt.some(a=>a.prioridade==='maxima');
+      bAjt.style.background = temMaxima? 'rgba(248,81,73,.18)' : '';
+      bAjt.style.color = temMaxima? 'var(--vermelho)' : '';
+      bAjt.style.borderColor = temMaxima? 'var(--vermelho)' : '';
+    } else {
+      bAjt.style.display = 'none';
+    }
+  }
   document.querySelectorAll('.nitem').forEach(x=>x.classList.toggle('on',x.dataset.v===VIEW));
   const [ct,cb] = CLI? ['Clientes', D.clientes.find(c=>c.aba===CLI).nome] : TITULOS[VIEW];
   document.getElementById('crumb-top').textContent=ct;
@@ -1679,6 +1821,7 @@ function render(){
   const v=document.getElementById('view');
   if(VIEW==='dashboard') renderHome(v);
   else if(VIEW==='clientes'){ if(CLI) renderCliente(v); else renderGaleria(v); }
+  else if(VIEW==='ajustes') renderAjustes(v);
   else if(VIEW==='config') renderConfig(v);
   else if(VIEW==='calendario') renderCalendario(v);
   else if(VIEW==='cs') renderCS(v);
@@ -2154,8 +2297,19 @@ function renderCliente(v){
   // sempre visível, igual ao padrão já usado pra tela Configurações.
   const podeVerMarcos = !MODO_APP || (PERFIL && (PERFIL.cargo==='admin'||PERFIL.cargo==='cs'));
   if(!podeVerMarcos && ABA_CLI==='marcos') ABA_CLI='etapas';
-  const abas=[['etapas','Etapas'], ...(podeVerMarcos?[['marcos','📣 Mensagens']]:[]), ['lista','Lista'],['kanban','Kanban'],['gantt','Gantt'],['celebracoes',`Celebrações (${qwF.length}/${qwT.length})`],['informacoes','Informações'],['metas','Metas extras'],['historico','Histórico']];
+  if(!podeVerAjustes() && ABA_CLI==='ajustes-cli') ABA_CLI='etapas';
+  const itensAjtCliente = AJUSTES.filter(a=>a.cliente_aba===c.aba);
+  const abertosAjtCliente = itensAjtCliente.filter(a=>a.status==='aberto'||a.status==='em_ajuste').length;
+  const abas=[['etapas','Etapas'], ...(podeVerAjustes()?[['ajustes-cli', `🔧 Ajustes${abertosAjtCliente?` (${abertosAjtCliente})`:''}`]]:[]), ...(podeVerMarcos?[['marcos','📣 Mensagens']]:[]), ['lista','Lista'],['kanban','Kanban'],['gantt','Gantt'],['celebracoes',`Celebrações (${qwF.length}/${qwT.length})`],['informacoes','Informações'],['metas','Metas extras'],['historico','Histórico']];
   let corpo='';
+  if(ABA_CLI==='ajustes-cli' && podeVerAjustes()){
+    corpo = `<div class="box"><h2>🔧 Ajustes${itensAjtCliente.length?` <span class="bdg">${itensAjtCliente.length}</span>`:''}</h2>
+      <div class="mnote" style="margin-bottom:10px">Bugs e melhorias da Sofia reportados no grupo deste cliente — fila própria (não conta pro % de progresso/streak do onboarding), ciclo aberto → em ajuste → aplicado → comunicado.</div>
+      <div style="margin-bottom:10px"><button class="btn sec cli-ajuste-btn" onclick="abreAjusteRapido('${esc(c.aba)}')">+ Ajuste</button></div>
+      ${renderListaAjustes(itensAjtCliente, {mostrarCliente:false})}
+    </div>`;
+    _marcaAjustesVisitados_(); // L11 (achado leve 26/08): só rodava na aba global — abrir pela aba do cliente nunca marcava "visitado" e o realce "mudou desde sua última visita" ficava sempre aceso pra quem só usa esta rota
+  }
   if(ABA_CLI==='marcos' && podeVerMarcos){ garantirMarcosCarregados(c.aba); corpo=renderMensagensProntas(c, its); }
   if(ABA_CLI==='etapas'){
     corpo=c.fases.map((fa,ix)=>{
@@ -2726,7 +2880,681 @@ document.addEventListener('click', function(ev){
   }
 });
 
-if(MODO_APP){ iniciarApp(); } else { render(); checaTour(); }
+// =====================================================================
+// 🔧 AJUSTES SOFIA — Plano "Fila de Ajustes Sofia na Central" (26/08).
+// ---------------------------------------------------------------------
+// Fila PRÓPRIA de bug/melhoria de Sofia reportada no grupo do cliente
+// (William/Adão) — ciclo aberto -> em_ajuste -> aplicado -> comunicado,
+// separada da tarefa avulsa/onboarding (não polui % de progresso/streak).
+//
+// Fluxo PRINCIPAL (redirecionamento do Pietro, 26/08): captura RÁPIDA — o
+// CS cola a mensagem crua do grupo (ou escreve direto), um parser
+// DETERMINÍSTICO (sem LLM) limpa cabeçalho de encaminhamento do WhatsApp
+// ("[11:41, 26/08/2026] Fulano:") e propõe título/detalhe, o CS confirma
+// cliente + prioridade e cria — SEMPRE com revisão humana antes de gravar
+// (o texto proposto nunca é enviado sem o CS ver e poder editar).
+// Fluxo SECUNDÁRIO: colador de listinha (vários clientes de uma vez, o
+// formato "**AJUSTES CLIENTE:**" que o William já usa às 17h30).
+//
+// Porta única: toda escrita passa por gasSave({acao:'ajuste', op:...}) —
+// o intercept de MODO_TREINO já é automático (gasSave finge sucesso sem
+// chamar a API real). Upload/download de anexo é supabase-js direto (como
+// o resto da Central), por isso chama treinoBloqueia() explicitamente.
+// =====================================================================
+
+let AJUSTES = [];        // espelho de public.ajustes (RLS já filtra por cargo/escopo)
+let AJUSTES_REAL = null; // guarda o dado real durante o Modo Treino (mesmo padrão de D_REAL)
+
+function podeVerAjustes(){ return !MODO_APP || (PERFIL && (PERFIL.cargo==='admin'||PERFIL.cargo==='cs')); }
+
+const AJUSTES_STATUS_LABEL = {aberto:'Aberto', em_ajuste:'Em ajuste', aplicado:'Aplicado', comunicado:'Comunicado'};
+const AJUSTES_PRIORIDADE_LABEL = {maxima:'🔴 Máxima', media:'🟡 Média', baixa:'◽ Baixa'};
+const AJUSTES_PRIORIDADE_ORDEM = {maxima:0, media:1, baixa:2};
+const AJUSTES_PRIORIDADE_PILL = {maxima:'p-pmax', media:'p-pmed', baixa:'p-pbaixa'};
+const AJUSTES_PRIORIDADE_COR = {maxima:'var(--vermelho)', media:'var(--amarelo)', baixa:'var(--faint)'};
+
+// M3 (achado MÉDIO da auditoria adversarial 26/08): os 4 mapas acima eram
+// lidos com MAPA[chave] cru — deixa passar chave de protótipo (ex.:
+// 'constructor', '__proto__') como se fosse valor legítimo (lição L10, que
+// o servidor já aplica com hasOwnProperty.call em todo lugar e o front não
+// aplicava aqui). Pior: quando a chave não existe no mapa, o fallback caía
+// pro valor CRU (a.status/a.prioridade) sem esc() — a auditoria PROVOU
+// execução com status hostil gravado direto no banco (fora da API, que já
+// valida contra enum). ajtMapa_() fecha os dois buracos: hasOwnProperty.call
+// pra nunca aceitar chave de protótipo, e esc() em qualquer fallback que
+// ecoe o valor cru de volta pro HTML.
+function ajtMapa_(mapa, chave, fallbackCru){
+  if(Object.prototype.hasOwnProperty.call(mapa, chave)) return mapa[chave];
+  return esc(fallbackCru!==undefined? fallbackCru : chave);
+}
+
+// ---- dataset fictício do Modo Treino (2 tickets, presos aos 2 clientes de
+// treino já existentes em dadosTreino()) — nunca persistido, só em memória. ----
+function dadosTreinoAjustes(){
+  const off=n=>{ const d=new Date(HOJE); d.setDate(d.getDate()+n); return d.toISOString(); };
+  return [
+    {id:'aj_treino_1', cliente_aba:'treino-sofia', titulo:'Sofia agendando na agenda errada (perguntar sempre qual Dr.)', detalhe:'Cliente reportou 2x essa semana no grupo — está marcando paciente de uma Dra. na agenda da outra.', tipo:'conta', prioridade:'maxima', reportado_por:'William', responsavel:'', status:'aberto', nota:'', criado_em:off(-2), atualizado_em:off(-2)},
+    {id:'aj_treino_2', cliente_aba:'treino-combo', titulo:'Avaliação não cai na agenda do dentista avaliador', detalhe:'', tipo:'conta', prioridade:'media', reportado_por:'Adão', responsavel:'Marcos', status:'em_ajuste', nota:'Já identificado — ajustando o roteamento.', criado_em:off(-5), atualizado_em:off(-1)},
+  ];
+}
+
+// ---- realtime: dedupe de ação local (mesmo padrão de marcaAcaoLocal) +
+// coalesce de toast (uma criar_lote de 30 = 30 eventos, não 30 toasts). ----
+const RT_ACOES_AJT = new Map();
+function marcaAcaoLocalAjuste(id){ RT_ACOES_AJT.set(id, Date.now()); }
+function eAcaoLocalAjusteRecente(id){ const t=RT_ACOES_AJT.get(id); return !!t && (Date.now()-t)<RT_JANELA_LOCAL_MS; }
+const RT_TOAST_BUFFER_AJT = {count:0, timer:null, msgUnico:''};
+function avisaMudancaAjusteAgregada(msgUnico){
+  RT_TOAST_BUFFER_AJT.count++; RT_TOAST_BUFFER_AJT.msgUnico=msgUnico;
+  clearTimeout(RT_TOAST_BUFFER_AJT.timer);
+  RT_TOAST_BUFFER_AJT.timer=setTimeout(()=>{
+    const n=RT_TOAST_BUFFER_AJT.count; RT_TOAST_BUFFER_AJT.count=0;
+    avisaMudancaRemota(n===1? RT_TOAST_BUFFER_AJT.msgUnico : `${n} ajustes atualizados`);
+  }, RT_TOAST_JANELA_MS);
+}
+function handleRealtimeAjuste(payload){
+  if(RT_STATUS==='live' && !RT_EVENTO_RECEBIDO){ RT_EVENTO_RECEBIDO=true; atualizaSeloRT(); }
+  if(!MODO_APP || MODO_TREINO) return;
+  const {eventType, new:novo, old} = payload;
+  const id = (novo&&novo.id) || (old&&old.id);
+  if(!id) return;
+  const removendo = eventType==='DELETE' || (novo && novo.ativo===false);
+  const ix = AJUSTES.findIndex(a=>a.id===id);
+  const local = eAcaoLocalAjusteRecente(id);
+  if(removendo){
+    if(ix>=0){ AJUSTES.splice(ix,1); if(!local) avisaMudancaAjusteAgregada('Um ajuste foi removido'); agendaRenderCoalescido(); }
+    return;
+  }
+  if(!novo) return;
+  if(ix>=0) Object.assign(AJUSTES[ix], novo);
+  else AJUSTES.push(novo);
+  if(!local) avisaMudancaAjusteAgregada(`Ajuste atualizado: "${(novo.titulo||'').slice(0,60)}"`);
+  agendaRenderCoalescido();
+}
+
+// ---- localStorage last-seen (padrão do resto do app — hk_side_fechada,
+// central_filtros etc.): realça ticket mudado desde a última visita à aba. ----
+function _ajustesUltimaVisita_(){ try{ return localStorage.getItem('central_ajustes_last_seen'); }catch(e){ return null; } }
+function _marcaAjustesVisitados_(){ try{ localStorage.setItem('central_ajustes_last_seen', new Date().toISOString()); }catch(e){ /* best effort */ } }
+
+// ---- ações via gasSave (porta única — Modo Treino intercepta sozinho) ----
+async function ajusteCriar(aba, titulo, detalhe, tipo, prioridade, btn){
+  const res = await gasSave({acao:'ajuste', op:'criar', aba, titulo, detalhe, tipo, prioridade}, btn);
+  if(!res) return null;
+  AJUSTES.push({id:res.id, cliente_aba:aba, titulo, detalhe:detalhe||'', tipo, prioridade,
+    reportado_por: PERFIL? (PERFIL.nome||PERFIL.email) : 'admin (local)', responsavel:'', status:'aberto', nota:'',
+    criado_em:new Date().toISOString(), atualizado_em:new Date().toISOString()});
+  return res;
+}
+async function ajusteCriarLote(itens, btn){
+  const res = await gasSave({acao:'ajuste', op:'criar_lote', itens}, btn);
+  if(!res) return null;
+  (res.criados||[]).forEach(cr=>{
+    const origem = itens[cr.idx] || {};
+    AJUSTES.push({id:cr.id, cliente_aba:cr.aba, titulo:origem.titulo||'', detalhe:origem.detalhe||'',
+      tipo:origem.tipo||'conta', prioridade:origem.prioridade||'media',
+      reportado_por: PERFIL? (PERFIL.nome||PERFIL.email) : 'admin (local)', responsavel:'', status:'aberto', nota:'',
+      criado_em:new Date().toISOString(), atualizado_em:new Date().toISOString()});
+  });
+  return res;
+}
+async function ajusteAtualizar(id, edits, btn){
+  const res = await gasSave({acao:'ajuste', op:'atualizar', id, edits}, btn);
+  if(!res) return null;
+  const ix = AJUSTES.findIndex(x=>x.id===id);
+  if(ix>=0){
+    Object.assign(AJUSTES[ix], edits, {atualizado_em:new Date().toISOString()});
+    // L6: 'ativo:false' (arquivar) tira da lista local igual o fetch real
+    // (.eq('ativo',true)) e o handler de realtime já fazem — senão o
+    // ticket arquivado continuava aparecendo na fila até um F5.
+    if(edits.ativo===false) AJUSTES.splice(ix,1);
+  }
+  return res;
+}
+
+// ---- captura rápida: limpeza de cabeçalho de encaminhamento do WhatsApp +
+// proposta de título/detalhe. DETERMINÍSTICO, sem LLM — precisa ser
+// auditável e sempre dar o MESMO resultado pro mesmo texto. ----
+const RE_CABECALHO_WHATSAPP_ = /^\[\d{1,2}:\d{2}(?::\d{2})?,\s*\d{1,2}\/\d{1,2}\/\d{2,4}\]\s*[^:\n]{0,80}:\s*/;
+function limpaCabecalhosWhatsapp(texto){
+  const linhas = String(texto||'').split(/\r?\n/);
+  const limpas = linhas.map(l=>{
+    let s=l, anterior;
+    do{ anterior=s; s=s.replace(RE_CABECALHO_WHATSAPP_,''); } while(s!==anterior); // cobre linha com cabeçalho repetido
+    return s;
+  }).filter(l=>l.trim()!=='');
+  return limpas.join('\n').trim();
+}
+function truncaSemCortarPalavra(s, max){
+  if(s.length<=max) return s;
+  // -1: sobra espaço pro '…' que entra no fim sem estourar `max` (achado
+  // durante a verificação do G1, 26/08: texto sem espaço perto do corte —
+  // ex. link ou hash comprido — batia exatamente em `max` chars e o '…'
+  // extra deixava a string com max+1, que o servidor rejeitava do mesmo
+  // jeito que rejeitava antes da normalização existir).
+  const corte=s.slice(0,max-1);
+  const ultimoEspaco=corte.lastIndexOf(' ');
+  return (ultimoEspaco>max*0.4? corte.slice(0,ultimoEspaco):corte).trim()+'…';
+}
+// ---- normalização de texto livre ANTES de mandar pro servidor (G1, achado
+// GRAVE da auditoria adversarial 26/08): _sanitizaTexto_ no instanciador.gs
+// bloqueia quebra de linha e prefixo de fórmula (=+-@) — certo como defesa,
+// mas o front colava a mensagem CRUA do WhatsApp (que sempre tem quebra de
+// linha) e só descobria o problema DEPOIS de clicar Criar, com um alert()
+// vindo do servidor. Normaliza aqui, nas duas pontas ficam protegidas: o
+// servidor continua barrando o que é perigoso, este helper evita que o caso
+// LEGÍTIMO precise de uma segunda tentativa.
+//   1. quebra de linha vira separador legível " / " (1 só, mesmo com linhas
+//      em branco no meio — nunca "//" nem separador solto na ponta).
+//   2. só o PREFIXO (primeiro caractere da string já JUNTADA) é removido se
+//      for perigoso (=+-@ ou tab) — "- " no MEIO do texto é bullet normal e
+//      não é tocado; é o mesmo critério do servidor (_sanitizaTexto_ só olha
+//      o começo), só que aplicado ANTES de mandar em vez de depois de barrar.
+//   3. trunca no limite (200 título / 500 detalhe e nota de ajuste / 1000
+//      nota de atividade) sem cortar no meio de uma palavra.
+// Devolve {valor, mudou} — `mudou` avisa o chamador se o texto precisou de
+// ajuste, pra mostrar um aviso visível ANTES de clicar Criar/Salvar (não um
+// alert() depois, que é exatamente o bug do G1).
+function normalizaTextoLivre(texto, max){
+  const original = String(texto==null? '':texto);
+  let s = original.replace(/\r\n?/g, '\n').split('\n').map(l=>l.trim()).filter(Boolean).join(' / ').trim();
+  s = s.replace(/^[=+\-@\t]+/, '').trim();
+  if(s.length>max) s = truncaSemCortarPalavra(s, max);
+  return {valor:s, mudou: s!==original.trim()};
+}
+function proporTituloDetalhe(textoBruto){
+  const limpo = limpaCabecalhosWhatsapp(textoBruto);
+  if(!limpo) return {titulo:'', detalhe:''};
+  const mFrase = limpo.match(/^[^.!?\n]*[.!?]?/);
+  let primeiraFrase = (mFrase? mFrase[0] : '').trim();
+  if(!primeiraFrase) primeiraFrase = limpo.split('\n')[0];
+  return {titulo: truncaSemCortarPalavra(primeiraFrase, 90), detalhe: limpo};
+}
+
+function abreAjusteRapido(abaPre){
+  const sel=document.getElementById('ajr-cliente');
+  sel.innerHTML = D.clientes.map(c=>`<option value="${esc(c.aba)}" ${c.aba===abaPre?'selected':''}>${esc(c.nome)}</option>`).join('');
+  sel.disabled = !!abaPre;
+  document.getElementById('ajr-colar').value='';
+  document.getElementById('ajr-titulo').value='';
+  document.getElementById('ajr-detalhe').value='';
+  document.getElementById('ajr-tipo').value='conta';
+  document.getElementById('ajr-prioridade').value='media';
+  document.getElementById('ajr-erro').textContent='';
+  document.getElementById('ajr-aviso').textContent='';
+  abre('ov-ajt-rapido');
+}
+// G1 (achado GRAVE, 26/08): mensagem visível de OQUE foi ajustado no texto,
+// pra aparecer ANTES do clique em Criar (nunca um alert() depois de barrado
+// pelo servidor — era exatamente esse o bug). `motivos` é um array de frases
+// curtas; vazio = não mostra nada.
+function _avisaNormalizacaoAjr_(motivos){
+  document.getElementById('ajr-aviso').textContent = motivos.length
+    ? '✎ Ajustei automaticamente antes de salvar: ' + motivos.join('; ') + '.' : '';
+}
+function processarColarRapido(){
+  const bruto = document.getElementById('ajr-colar').value;
+  const {titulo, detalhe} = proporTituloDetalhe(bruto);
+  const nTitulo = normalizaTextoLivre(titulo, 200);
+  const nDetalhe = normalizaTextoLivre(detalhe, 500);
+  if(titulo) document.getElementById('ajr-titulo').value = nTitulo.valor;
+  if(detalhe) document.getElementById('ajr-detalhe').value = nDetalhe.valor;
+  document.getElementById('ajr-erro').textContent = (!titulo && !detalhe)
+    ? 'Não achei texto pra extrair — cole a mensagem ou escreva direto nos campos abaixo.' : '';
+  const motivos=[];
+  if(nTitulo.mudou) motivos.push('título (quebra de linha/caractere de início/tamanho)');
+  if(nDetalhe.mudou) motivos.push('detalhe (quebra de linha/caractere de início/tamanho)');
+  _avisaNormalizacaoAjr_(motivos);
+}
+async function salvarAjusteRapido(){
+  const erroEl=document.getElementById('ajr-erro'); erroEl.textContent='';
+  const aba=document.getElementById('ajr-cliente').value;
+  // G1: normaliza de novo AQUI (rede de segurança — cobre quem digitou/colou
+  // direto nos campos, sem passar pelo botão "Extrair", ou editou por cima
+  // do que já veio normalizado) e usa o valor JÁ SEGURO no lugar de só
+  // bloquear com erro. Título/detalhe na tela são atualizados pro valor
+  // realmente enviado, pra nunca haver dúvida do que foi salvo.
+  const tituloEl=document.getElementById('ajr-titulo'), detalheEl=document.getElementById('ajr-detalhe');
+  const nTitulo = normalizaTextoLivre(tituloEl.value, 200);
+  const nDetalhe = normalizaTextoLivre(detalheEl.value, 500);
+  tituloEl.value = nTitulo.valor; detalheEl.value = nDetalhe.valor;
+  const titulo=nTitulo.valor, detalhe=nDetalhe.valor;
+  const tipo=document.getElementById('ajr-tipo').value;
+  const prioridade=document.getElementById('ajr-prioridade').value;
+  if(!aba){ erroEl.textContent='Escolha o cliente.'; return; }
+  if(!titulo){ erroEl.textContent='Título é obrigatório (reveja o texto extraído ou escreva direto).'; return; }
+  const motivos=[];
+  if(nTitulo.mudou) motivos.push('título');
+  if(nDetalhe.mudou) motivos.push('detalhe');
+  _avisaNormalizacaoAjr_(motivos);
+  const btn=document.getElementById('ajr-salvar-btn');
+  const res = await ajusteCriar(aba, titulo, detalhe, tipo, prioridade, btn);
+  if(!res) return;
+  fecha('ov-ajt-rapido');
+  toast('Ajuste criado', 'sucesso');
+  if(VIEW==='ajustes' || (VIEW==='clientes' && CLI===aba)) render();
+}
+document.getElementById('ajuste-rapido-btn').onclick = ()=>abreAjusteRapido(CLI||null);
+document.getElementById('ajr-processar-btn').onclick = processarColarRapido;
+document.getElementById('ajr-salvar-btn').onclick = salvarAjusteRapido;
+document.getElementById('ajr-lote-btn').onclick = ()=>{ fecha('ov-ajt-rapido'); abreAjusteLote(); };
+
+// ---- colador de listinha (modo SECUNDÁRIO) ----
+const RE_ITEM_LISTINHA_ = /^\s*(?:\d+[.)]|-)\s*(.+?)\s*$/;
+function ehLinhaItemListinha_(l){ return RE_ITEM_LISTINHA_.test(l); }
+function extraiNomeCabecalhoListinha_(linha){
+  let s=linha.trim();
+  s=s.replace(/^\*+/,'').replace(/\*+$/,'');
+  s=s.replace(/^ajustes\s+/i,'');
+  s=s.replace(/:\s*$/,'');
+  return s.trim();
+}
+function parseListinhaAjustes(texto){
+  const linhasBrutas = String(texto||'').split(/\r?\n/).map(l=>l.trim());
+  const blocos=[]; let atual=null;
+  for(let idx=0; idx<linhasBrutas.length; idx++){
+    const linha=linhasBrutas[idx];
+    if(!linha) continue;
+    if(ehLinhaItemListinha_(linha)){
+      if(atual) atual.itens.push(linha.match(RE_ITEM_LISTINHA_)[1].trim());
+      continue; // item órfão (sem cabeçalho ainda) é ignorado — não quebra o parser
+    }
+    const proximaNaoVazia = linhasBrutas.slice(idx+1).find(l=>l);
+    const pareceCabecalho = /ajustes/i.test(linha) || /\*/.test(linha) || /:\s*$/.test(linha) || (proximaNaoVazia && ehLinhaItemListinha_(proximaNaoVazia));
+    if(pareceCabecalho){
+      const nome = extraiNomeCabecalhoListinha_(linha);
+      if(nome){ atual={clienteTexto:nome, itens:[]}; blocos.push(atual); }
+    }
+  }
+  return blocos.filter(b=>b.itens.length);
+}
+function normalizaNomeAjt_(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/\s+/g,' '); }
+function distanciaLevenshtein_(a,b){
+  const m=a.length, n=b.length;
+  const d=[]; for(let i=0;i<=m;i++){ d.push([i]); }
+  for(let j=1;j<=n;j++) d[0][j]=j;
+  for(let i=1;i<=m;i++){
+    for(let j=1;j<=n;j++){
+      d[i][j] = a[i-1]===b[j-1] ? d[i-1][j-1] : 1+Math.min(d[i-1][j],d[i][j-1],d[i-1][j-1]);
+    }
+  }
+  return d[m][n];
+}
+function resolveClienteAjt(nomeTexto){
+  const alvo = normalizaNomeAjt_(nomeTexto);
+  if(!alvo) return {status:'nao_encontrado'};
+  const exatos = D.clientes.filter(c=>normalizaNomeAjt_(c.nome)===alvo);
+  if(exatos.length===1) return {status:'ok', cliente:exatos[0]};
+  if(exatos.length>1) return {status:'ambiguo', candidatos:exatos};
+  const pontuados = D.clientes.map(c=>({c, d:distanciaLevenshtein_(alvo, normalizaNomeAjt_(c.nome))})).sort((a,b)=>a.d-b.d);
+  const limite = Math.max(2, Math.round(alvo.length*0.2));
+  const bons = pontuados.filter(p=>p.d<=limite);
+  if(!bons.length) return {status:'nao_encontrado'};
+  if(bons.length===1 || bons[0].d<bons[1].d) return {status:'ok', cliente:bons[0].c, aproximado:true};
+  return {status:'ambiguo', candidatos:bons.map(b=>b.c)};
+}
+
+let AJL_PREVIEW = []; // [{clienteTexto, resolvido:{status,cliente|candidatos,aproximado}, itens:[{titulo, incluir}]}]
+function abreAjusteLote(){
+  fecha('ov-ajt-rapido');
+  document.getElementById('ajl-texto').value='';
+  document.getElementById('ajl-preview').innerHTML='';
+  document.getElementById('ajl-erro').textContent='';
+  document.getElementById('ajl-criar-btn').style.display='none';
+  AJL_PREVIEW=[];
+  abre('ov-ajt-lote');
+}
+function analisarListinha(){
+  const texto = document.getElementById('ajl-texto').value;
+  const blocos = parseListinhaAjustes(texto);
+  const erroEl=document.getElementById('ajl-erro'); erroEl.textContent='';
+  if(!blocos.length){
+    erroEl.textContent='Não achei nenhum bloco reconhecível. Formato esperado: "**AJUSTES CLIENTE:**" seguido de itens numerados (1. ou -).';
+    document.getElementById('ajl-preview').innerHTML=''; document.getElementById('ajl-criar-btn').style.display='none';
+    document.getElementById('ajl-aviso').textContent='';
+    return;
+  }
+  // L2 (achado leve 26/08): prioridade nascia SEMPRE 'media' pra lote
+  // inteiro — a rotina das 17h30 do William é exatamente onde isso mais
+  // dói (§1.2 do plano previa prioridade por item). Agora é por BLOCO
+  // (1 bloco = 1 cliente = normalmente 1 contexto de urgência), editável no
+  // preview antes de criar — default 'media' preserva o comportamento
+  // anterior pra quem não mexer.
+  AJL_PREVIEW = blocos.map(b=>({clienteTexto:b.clienteTexto, resolvido:resolveClienteAjt(b.clienteTexto), prioridade:'media', itens:b.itens.map(t=>({titulo:t, incluir:true}))}));
+  renderPreviewListinha();
+  document.getElementById('ajl-criar-btn').style.display='';
+}
+function renderPreviewListinha(){
+  const el = document.getElementById('ajl-preview');
+  el.innerHTML = AJL_PREVIEW.map((grupo, gi)=>{
+    let selCliente = '';
+    if(grupo.resolvido.status!=='ok' || grupo.resolvido.aproximado){
+      selCliente = `<select class="ajl-cliente-sel" data-grupo="${gi}" style="margin-left:8px">
+        <option value="">— escolha o cliente —</option>
+        ${D.clientes.map(c=>`<option value="${esc(c.aba)}" ${grupo.resolvido.cliente && grupo.resolvido.cliente.aba===c.aba?'selected':''}>${esc(c.nome)}</option>`).join('')}
+      </select>`;
+    }
+    const avisoNome = grupo.resolvido.status==='nao_encontrado'
+      ? `<span class="pill p-atr">cliente não encontrado — "${esc(grupo.clienteTexto)}"</span>`
+      : grupo.resolvido.status==='ambiguo'
+        ? `<span class="pill p-hoje">nome ambíguo — "${esc(grupo.clienteTexto)}"</span>`
+        : grupo.resolvido.aproximado
+          ? `<span class="pill p-hoje">correspondência aproximada de "${esc(grupo.clienteTexto)}"</span>`
+          : `<span class="pill p-ok">✓ ${esc(grupo.resolvido.cliente.nome)}</span>`;
+    const selPrioridade = `<select class="ajl-prioridade-sel" data-grupo="${gi}" style="margin-left:8px">
+        <option value="maxima" ${grupo.prioridade==='maxima'?'selected':''}>🔴 Máxima</option>
+        <option value="media" ${grupo.prioridade==='media'?'selected':''}>🟡 Média</option>
+        <option value="baixa" ${grupo.prioridade==='baixa'?'selected':''}>◽ Baixa</option>
+      </select>`;
+    const itensHtml = grupo.itens.map((it,ii)=>`<div class="ajl-item-prev">
+      <input type="checkbox" data-grupo="${gi}" data-item="${ii}" class="ajl-item-check" ${it.incluir?'checked':''} style="width:auto;margin-top:4px">
+      <input type="text" data-grupo="${gi}" data-item="${ii}" class="ajl-item-titulo" value="${esc(it.titulo)}" maxlength="200" style="flex:1">
+    </div>`).join('');
+    return `<div class="ajl-grupo"><div class="cab"><b>AJUSTES ${esc(grupo.clienteTexto.toUpperCase())}</b>${avisoNome}${selCliente}${selPrioridade}</div>${itensHtml}</div>`;
+  }).join('');
+  // M2 (achado MÉDIO 26/08): antes o bloco sem cliente resolvido era
+  // descartado em silêncio na hora de criar, e o toast final não contava
+  // isso ("3 ticket(s) criado(s)" tendo colado 4 blocos). Aviso ANTES do
+  // clique — mesmo espírito do G1 — pra nunca ser surpresa só no toast.
+  const naoResolvidos = AJL_PREVIEW.filter(g=>g.resolvido.status!=='ok').length;
+  document.getElementById('ajl-aviso').textContent = naoResolvidos
+    ? `⚠ ${naoResolvidos} bloco(s) sem cliente resolvido — resolva pelo seletor acima ou eles NÃO entram na criação (o toast final vai contar isso como falha).`
+    : '';
+}
+document.getElementById('ajl-analisar-btn').onclick = analisarListinha;
+document.addEventListener('change', ev=>{
+  const selCli = ev.target.closest('.ajl-cliente-sel');
+  if(selCli){
+    const gi=Number(selCli.dataset.grupo), aba=selCli.value, c=D.clientes.find(x=>x.aba===aba);
+    AJL_PREVIEW[gi].resolvido = c? {status:'ok', cliente:c} : {status:'nao_encontrado'};
+    renderPreviewListinha();
+    return;
+  }
+  const selPrio = ev.target.closest('.ajl-prioridade-sel');
+  if(selPrio){ AJL_PREVIEW[Number(selPrio.dataset.grupo)].prioridade = selPrio.value; return; }
+  const chk = ev.target.closest('.ajl-item-check');
+  if(chk){ AJL_PREVIEW[Number(chk.dataset.grupo)].itens[Number(chk.dataset.item)].incluir = chk.checked; }
+});
+document.addEventListener('input', ev=>{
+  const tit = ev.target.closest('.ajl-item-titulo');
+  if(tit){ AJL_PREVIEW[Number(tit.dataset.grupo)].itens[Number(tit.dataset.item)].titulo = tit.value; }
+});
+async function criarTicketsDaListinha(){
+  const erroEl=document.getElementById('ajl-erro'); erroEl.textContent='';
+  const itens=[];
+  let gruposSemCliente=0;
+  AJL_PREVIEW.forEach(grupo=>{
+    if(grupo.resolvido.status!=='ok'){ gruposSemCliente++; return; } // sem cliente resolvido: não entra (usuário resolve pelo select) — CONTADO abaixo, nunca some em silêncio (M2)
+    grupo.itens.forEach(it=>{
+      if(!it.incluir || !it.titulo.trim()) return;
+      // G1: mesma normalização da captura rápida — título de item de lista
+      // pode vir com prefixo perigoso (ex.: telefone colado "+55 11 ...").
+      const nTitulo = normalizaTextoLivre(it.titulo, 200);
+      itens.push({cliente_aba:grupo.resolvido.cliente.aba, titulo:nTitulo.valor, detalhe:'', tipo:'conta', prioridade:grupo.prioridade||'media'});
+    });
+  });
+  if(!itens.length){ erroEl.textContent='Nenhum item pronto pra criar — resolva o cliente de cada bloco e marque ao menos 1 item.'; return; }
+  if(itens.length>30){ erroEl.textContent=`Máximo 30 itens por vez (você tem ${itens.length}) — crie em 2 levas.`; return; }
+  const btn=document.getElementById('ajl-criar-btn');
+  const res = await ajusteCriarLote(itens, btn);
+  if(!res) return;
+  const nCriados=(res.criados||[]).length, nFalhas=(res.falhas||[]).length + gruposSemCliente;
+  fecha('ov-ajt-lote');
+  toast(nFalhas? `${nCriados} ticket(s) criado(s), ${nFalhas} falhou(aram)` : `${nCriados} ticket(s) criado(s)`, nFalhas? 'info':'sucesso');
+  if(VIEW==='ajustes') render();
+}
+document.getElementById('ajl-criar-btn').onclick = criarTicketsDaListinha;
+
+// ---- ticket: detalhe/edição, mensagem pronta e anexo ----
+function ajusteMensagemPronta(a){
+  // Formato de texto comercial da casa: SEM travessão — dois-pontos no lugar.
+  return `✅ Ajuste aplicado: ${a.titulo}.${a.nota? ' '+a.nota : ''}`;
+}
+function nomeClientePorAba(aba){ const c=D.clientes.find(x=>x.aba===aba); return c? c.nome : String(aba||'').replace('Cliente – ',''); }
+
+function abreAjusteDetalhe(id){
+  const a = AJUSTES.find(x=>x.id===id);
+  if(!a) return;
+  const statusOpts = Object.keys(AJUSTES_STATUS_LABEL).map(s=>`<option value="${s}" ${a.status===s?'selected':''}>${AJUSTES_STATUS_LABEL[s]}</option>`).join('');
+  const tipoOpts = `<option value="conta" ${a.tipo==='conta'?'selected':''}>Conta (a gente ajusta o bot)</option><option value="produto" ${a.tipo==='produto'?'selected':''}>Produto (vira chamado GPI)</option>`;
+  const prioOpts = Object.keys(AJUSTES_PRIORIDADE_LABEL).map(p=>`<option value="${p}" ${a.prioridade===p?'selected':''}>${AJUSTES_PRIORIDADE_LABEL[p]}</option>`).join('');
+  document.getElementById('ajt-corpo').innerHTML = `
+    <span class="fecha" onclick="fecha('ov-ajt')">✕</span>
+    <h2>${esc(a.titulo)}</h2><div class="sub">${esc(nomeClientePorAba(a.cliente_aba))} · reportado por ${esc(a.reportado_por||'—')} em ${fmtLongo(dt(a.criado_em.slice(0,10)))}</div>
+    ${a.detalhe? `<div class="aviso" style="margin:10px 0">${esc(a.detalhe)}</div>` : ''}
+    <div class="mgrid">
+      <div><label>Status</label><select id="ajt-status">${statusOpts}</select></div>
+      <div><label>Responsável</label><select id="ajt-resp"><option value="">— sem responsável —</option></select></div>
+      <div><label>Tipo</label><select id="ajt-tipo">${tipoOpts}</select></div>
+      <div><label>Prioridade</label><select id="ajt-prioridade">${prioOpts}</select></div>
+      <div class="mfull"><label>Nota de resolução</label><textarea id="ajt-nota" maxlength="500" placeholder="O que foi feito / decidido...">${esc(a.nota||'')}</textarea></div>
+    </div>
+    <div id="ajt-msg-pronta"></div>
+    <div class="mfoot">
+      ${(!MODO_APP || (PERFIL && PERFIL.cargo==='admin'))? `<button class="btn danger" data-acao-ajt="arquivar" data-id="${esc(a.id)}" title="Some da fila — nunca apaga (reative direto na planilha/banco, coluna Ativo, se precisar)">Arquivar</button>` : ''}
+      <button class="btn sec" onclick="fecha('ov-ajt')">Fechar</button>
+      <button class="btn" id="ajt-salvar-btn">Salvar</button>
+    </div>
+    ${podeVerArquivos()? `<div class="box" style="margin-top:14px"><h2>📎 Anexo (print do bug)</h2>
+      <div id="ajt-anexos" class="mnote">Carregando anexos…</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+        <input type="file" id="ajt-arquivo" accept="image/*,.pdf">
+        <button class="btn sec" data-acao-ajt="anexar" data-id="${esc(a.id)}">Anexar</button>
+      </div>
+      ${(!MODO_APP||!sb||!SESSAO)? '<div class="mnote" style="margin-top:6px">Upload/download de anexo só funciona no app publicado (login Supabase).</div>':''}
+    </div>` : ''}`;
+  carregaPerfisParaResponsavel(a.responsavel);
+  atualizaMensagemProntaUI(a);
+  document.getElementById('ajt-status').onchange = ()=>atualizaMensagemProntaUI(a, document.getElementById('ajt-status').value, document.getElementById('ajt-nota').value);
+  document.getElementById('ajt-nota').oninput = ()=>atualizaMensagemProntaUI(a, document.getElementById('ajt-status').value, document.getElementById('ajt-nota').value);
+  document.getElementById('ajt-salvar-btn').onclick = ()=>salvarAjusteDetalhe(a.id);
+  if(podeVerArquivos()) carregaAnexosAjuste(a.cliente_aba, a.id);
+  abre('ov-ajt');
+}
+async function carregaPerfisParaResponsavel(atual){
+  const sel = document.getElementById('ajt-resp');
+  if(!sel) return;
+  // "qualquer usuário aprovado" (mesma fonte da tela Responsáveis) — em modo
+  // local (sem login Supabase) cai pras pessoas fixas da planilha, único
+  // universo que existe ali.
+  let nomes = PESSOAS_ATRIBUIVEIS;
+  if(MODO_APP && sb){
+    const perfis = await carregaPerfis();
+    const aprovados = (perfis||[]).filter(p=>p.aprovado).map(p=>p.nome||(p.email? p.email.split('@')[0]:'')).filter(Boolean);
+    if(aprovados.length) nomes = Array.from(new Set(aprovados));
+  }
+  sel.innerHTML = '<option value="">— sem responsável —</option>' + nomes.map(n=>`<option ${atual===n?'selected':''}>${esc(n)}</option>`).join('');
+  if(atual && !nomes.includes(atual)) sel.innerHTML += `<option selected>${esc(atual)}</option>`; // preserva nome legado que não bate com a lista atual
+}
+function atualizaMensagemProntaUI(a, statusForm, notaForm){
+  const status = statusForm!=null? statusForm : a.status;
+  const nota = notaForm!=null? notaForm : a.nota;
+  const el = document.getElementById('ajt-msg-pronta');
+  if(!el) return;
+  if(status!=='aplicado' && status!=='comunicado'){ el.innerHTML=''; return; }
+  const textoMsg = ajusteMensagemPronta({...a, nota});
+  MSGS_TEMP['ajt_'+a.id] = textoMsg;
+  el.innerHTML = `<div class="box" style="margin-top:12px"><h2>✅ Mensagem pronta pro grupo do cliente</h2>
+    <div class="mnote" style="white-space:pre-wrap">${esc(textoMsg)}</div>
+    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+      <button class="btn sec" data-acao-ajt="copiar-msg-pronta" data-id="${esc(a.id)}">Copiar</button>
+      ${status==='aplicado'? `<button class="btn" data-acao-ajt="confirmar-comunicado" data-id="${esc(a.id)}">Copiei e enviei — marcar comunicado</button>` : '<span class="pill p-ok">✓ Já marcado como comunicado</span>'}
+    </div></div>`;
+}
+async function salvarAjusteDetalhe(id){
+  // G1/M1: mesma normalização da captura rápida — "nota com 2 linhas" era
+  // um dos 5 casos que a auditoria provou derrubar o fluxo (o servidor
+  // rejeitava e o front só avisava DEPOIS, via alert do gasSave). Nota de
+  // resolução tem textarea (multi-linha é o caso comum aqui, não exceção).
+  const nNota = normalizaTextoLivre(document.getElementById('ajt-nota').value, 500);
+  const edits = {
+    status: document.getElementById('ajt-status').value,
+    responsavel: document.getElementById('ajt-resp').value,
+    tipo: document.getElementById('ajt-tipo').value,
+    prioridade: document.getElementById('ajt-prioridade').value,
+    nota: nNota.valor,
+  };
+  const btn=document.getElementById('ajt-salvar-btn');
+  const res = await ajusteAtualizar(id, edits, btn);
+  if(!res) return;
+  toast(nNota.mudou? 'Ajuste atualizado (nota ajustada: quebra de linha/caractere de início/tamanho)' : 'Ajuste atualizado', 'sucesso');
+  const a = AJUSTES.find(x=>x.id===id);
+  if(a) atualizaMensagemProntaUI(a);
+  if(VIEW==='ajustes' || VIEW==='clientes') render();
+}
+// L6 (achado leve da auditoria adversarial 26/08): não existia jeito de
+// arquivar/excluir um ticket — admin só, nunca cs (whitelist no servidor já
+// barra cs, ver _ajusteAtualizar_). Nunca apaga a linha: mesma régua de
+// clientes/atividades (ativo=false, coluna M da aba Ajustes).
+async function arquivarAjuste(id){
+  const res = await ajusteAtualizar(id, {ativo:false});
+  if(!res) return;
+  fecha('ov-ajt');
+  toast('Ajuste arquivado — some da fila (nunca apagado; reative direto na planilha/banco se precisar)', 'sucesso');
+  if(VIEW==='ajustes' || VIEW==='clientes') render();
+}
+async function confirmarComunicado(id){
+  const res = await ajusteAtualizar(id, {status:'comunicado'});
+  if(!res) return;
+  toast('Marcado como comunicado', 'sucesso');
+  abreAjusteDetalhe(id); // reabre já refletindo o novo status
+  if(VIEW==='ajustes' || VIEW==='clientes') render();
+}
+async function carregaAnexosAjuste(aba, id){
+  const el = document.getElementById('ajt-anexos');
+  if(!el) return;
+  if(MODO_TREINO){ el.innerHTML='🎓 Modo treino — anexos não são carregados (ticket fictício).'; return; }
+  if(!sb || !SESSAO){ el.innerHTML='Sem login Supabase — anexos indisponíveis neste modo.'; return; }
+  const prefixo = 'ajuste/'+sanitizaSegmentoPath(aba)+'/'+id+'/';
+  const {data, error} = await sb.storage.from('arquivos').list(prefixo, {limit:20, sortBy:{column:'created_at',order:'desc'}});
+  if(error){ el.innerHTML='Erro ao listar anexos: '+esc(error.message); return; }
+  if(!data || !data.length){ el.innerHTML='Nenhum anexo ainda.'; return; }
+  el.innerHTML = data.map(f=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0"><span>${esc(f.name)}</span><button class="btn sec" style="padding:2px 8px;font-size:11px" data-acao-ajt="baixar-anexo" data-path="${esc(prefixo+f.name)}" data-nome="${esc(f.name)}">Baixar</button></div>`).join('');
+}
+async function anexarAjuste(id){
+  const a = AJUSTES.find(x=>x.id===id);
+  if(!a) return;
+  if(MODO_TREINO){ treinoBloqueia('Anexar arquivo'); return; }
+  if(!sb || !SESSAO){ alert('Upload exige login no app publicado.'); return; }
+  const input = document.getElementById('ajt-arquivo');
+  const file = input.files[0];
+  if(!file){ alert('Escolha um arquivo (imagem ou PDF) antes de anexar.'); return; }
+  const path = 'ajuste/'+sanitizaSegmentoPath(a.cliente_aba)+'/'+id+'/'+Date.now()+'_'+file.name.replace(/[^a-zA-Z0-9_.-]/g,'_');
+  const res = await uploadParaBucket(path, file);
+  input.value='';
+  if(res.ok) carregaAnexosAjuste(a.cliente_aba, id);
+}
+
+// ---- listener delegado (data-acao-ajt) — mesma régua do data-acao-marco:
+// NUNCA onclick com dado interpolado (só data-* + listener em document, que
+// nunca reinterpreta o valor decodificado como código). ----
+document.addEventListener('click', function(ev){
+  const el = ev.target.closest('[data-acao-ajt]');
+  if(!el) return;
+  const acao = el.dataset.acaoAjt;
+  if(acao==='abrir') abreAjusteDetalhe(el.dataset.id);
+  else if(acao==='confirmar-comunicado') confirmarComunicado(el.dataset.id);
+  else if(acao==='anexar') anexarAjuste(el.dataset.id);
+  else if(acao==='copiar-msg-pronta') copiarTexto(MSGS_TEMP['ajt_'+el.dataset.id], el); // L1: era onclick com dado interpolado — única exceção da feature à régua acima
+  else if(acao==='arquivar') arquivarAjuste(el.dataset.id);
+  else if(acao==='baixar-anexo') baixarArquivo(el.dataset.path, el.dataset.nome);
+  else if(acao==='filtro-chip'){
+    const campo=el.dataset.campo, valor=el.dataset.valor;
+    AJT_FILTRO[campo] = AJT_FILTRO[campo]===valor? 'all' : valor; // clique de novo no mesmo chip limpa o filtro
+    render();
+  } else if(acao==='meus-ajustes'){
+    const eu = PERFIL? (PERFIL.nome||PERFIL.email) : '';
+    AJT_FILTRO.responsavel = (AJT_FILTRO.responsavel===eu)? 'all' : eu;
+    render();
+  }
+});
+
+// ---- 🔧 tela global "Ajustes" — resumo do dono (clica e filtra) + fila
+// ordenada por prioridade+idade (default: "o que fazer agora", bom pra
+// admin E cs — os dois querem a mesma pergunta respondida em 1 minuto). ----
+let AJT_FILTRO = {cliente:'all', status:'fila', prioridade:'all', responsavel:'all'};
+function ajustesFiltrados(){
+  return AJUSTES.filter(a=>{
+    if(AJT_FILTRO.cliente!=='all' && a.cliente_aba!==AJT_FILTRO.cliente) return false;
+    if(AJT_FILTRO.prioridade!=='all' && a.prioridade!==AJT_FILTRO.prioridade) return false;
+    if(AJT_FILTRO.responsavel!=='all' && (a.responsavel||'')!==AJT_FILTRO.responsavel) return false;
+    if(AJT_FILTRO.status==='fila') return a.status==='aberto'||a.status==='em_ajuste';
+    if(AJT_FILTRO.status!=='all') return a.status===AJT_FILTRO.status;
+    return true;
+  }).sort((x,y)=> (AJUSTES_PRIORIDADE_ORDEM[x.prioridade]??9)-(AJUSTES_PRIORIDADE_ORDEM[y.prioridade]??9) || x.criado_em.localeCompare(y.criado_em));
+}
+function renderListaAjustes(itens, opts){
+  opts = opts||{};
+  const ultimaVisita = _ajustesUltimaVisita_();
+  if(!itens.length) return '<div class="vazio" style="text-align:center;padding:26px">🔧<br>Nenhum ajuste aqui.</div>';
+  return itens.map(a=>{
+    const mudouDesdeVisita = ultimaVisita && a.atualizado_em > ultimaVisita;
+    const cor = ajtMapa_(AJUSTES_PRIORIDADE_COR, a.prioridade, 'var(--border)');
+    return `<div class="ajt-item ${mudouDesdeVisita?'realce-novo':''}" style="--ec:${cor}" data-acao-ajt="abrir" data-id="${esc(a.id)}">
+      <div class="corpo">
+        <div class="tit">${esc(a.titulo)}</div>
+        <small>${opts.mostrarCliente!==false? esc(nomeClientePorAba(a.cliente_aba))+' · ' : ''}${esc(a.tipo==='produto'?'Produto':'Conta')} · reportado por ${esc(a.reportado_por||'—')}${a.responsavel? ' · atribuído a '+esc(a.responsavel):''}</small>
+      </div>
+      <div class="fx">
+        <span class="pill ${ajtMapa_(AJUSTES_PRIORIDADE_PILL, a.prioridade, 'p-mut')}">${ajtMapa_(AJUSTES_PRIORIDADE_LABEL, a.prioridade, a.prioridade)}</span>
+        <span class="pill p-mut">${ajtMapa_(AJUSTES_STATUS_LABEL, a.status, a.status)}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+function renderAjustes(v){
+  const fila = AJUSTES.filter(a=>a.status==='aberto'||a.status==='em_ajuste');
+  const chipPrioridade = (p)=>{
+    const n = fila.filter(a=>a.prioridade===p).length;
+    return `<div class="ajt-chip ${AJT_FILTRO.prioridade===p?'on':''}" data-acao-ajt="filtro-chip" data-campo="prioridade" data-valor="${p}"><b>${n}</b> ${AJUSTES_PRIORIDADE_LABEL[p]}</div>`;
+  };
+  const porCliente = {}; fila.forEach(a=>{ porCliente[a.cliente_aba]=(porCliente[a.cliente_aba]||0)+1; });
+  const chipsCliente = Object.entries(porCliente).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([aba,n])=>
+    `<div class="ajt-chip ${AJT_FILTRO.cliente===aba?'on':''}" data-acao-ajt="filtro-chip" data-campo="cliente" data-valor="${esc(aba)}"><b>${n}</b> ${esc(nomeClientePorAba(aba))}</div>`
+  ).join('');
+  const porResp = {}; fila.forEach(a=>{ const k=a.responsavel||'sem responsável'; porResp[k]=(porResp[k]||0)+1; });
+  const chipsResp = Object.entries(porResp).sort((a,b)=>b[1]-a[1]).map(([resp,n])=>
+    `<div class="ajt-chip ${AJT_FILTRO.responsavel===resp?'on':''}" data-acao-ajt="filtro-chip" data-campo="responsavel" data-valor="${esc(resp==='sem responsável'?'':resp)}"><b>${n}</b> ${esc(resp)}</div>`
+  ).join('');
+  const euNome = PERFIL? (PERFIL.nome||PERFIL.email) : '';
+  const meusN = fila.filter(a=>a.responsavel===euNome).length;
+
+  const itens = ajustesFiltrados();
+  v.innerHTML = `
+    <div class="aviso" style="margin-bottom:14px">Fila própria de bugs/melhorias de Sofia — separada do onboarding. Clique num cartão do resumo pra filtrar; clique de novo pra limpar.</div>
+    <div class="ajt-resumo">
+      ${chipPrioridade('maxima')}${chipPrioridade('media')}${chipPrioridade('baixa')}
+      ${MODO_APP && PERFIL? `<div class="ajt-chip ${AJT_FILTRO.responsavel===euNome?'on':''}" data-acao-ajt="meus-ajustes"><b>${meusN}</b> Meus ajustes</div>`:''}
+    </div>
+    ${chipsCliente? `<div class="ajt-resumo">${chipsCliente}</div>`:''}
+    ${chipsResp? `<div class="ajt-resumo">${chipsResp}</div>`:''}
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+      <select id="ajt-f-status" style="max-width:220px">
+        <option value="fila" ${AJT_FILTRO.status==='fila'?'selected':''}>Fila de trabalho (aberto + em ajuste)</option>
+        <option value="aberto" ${AJT_FILTRO.status==='aberto'?'selected':''}>Só aberto</option>
+        <option value="em_ajuste" ${AJT_FILTRO.status==='em_ajuste'?'selected':''}>Só em ajuste</option>
+        <option value="aplicado" ${AJT_FILTRO.status==='aplicado'?'selected':''}>Aplicado</option>
+        <option value="comunicado" ${AJT_FILTRO.status==='comunicado'?'selected':''}>Comunicado</option>
+        <option value="all" ${AJT_FILTRO.status==='all'?'selected':''}>Todos os status</option>
+      </select>
+      <button class="btn sec" onclick="abreAjusteRapido(null)">🔧 + Ajuste</button>
+      <button class="btn sec" onclick="abreAjusteLote()">📋 Colar lista</button>
+      <span style="margin-left:auto;color:var(--faint);font-size:12px">${itens.length} ticket(s)</span>
+    </div>
+    <div class="box">${renderListaAjustes(itens, {mostrarCliente:true})}</div>`;
+  document.getElementById('ajt-f-status').onchange = e=>{ AJT_FILTRO.status=e.target.value; render(); };
+  _marcaAjustesVisitados_();
+}
+
+// G2 (achado GRAVE da auditoria adversarial 26/08): modo local nunca
+// preenchia AJUSTES (só existia `sb.from('ajustes')` em carregaDados(),
+// que só roda em MODO_APP) — a aba "Ajustes" criava ticket de verdade (via
+// GAS) mas NUNCA mostrava nada no hawki_central.html, o arquivo que o
+// Pietro abre direto. build_central.py agora lê a aba "Ajustes" da
+// planilha pro D.ajustes embutido (ver le_ajustes() no .py) — só falta
+// espelhar aqui pro global AJUSTES que renderAjustes()/renderListaAjustes()
+// já leem.
+if(MODO_APP){ iniciarApp(); } else { AJUSTES = D.ajustes || []; render(); checaTour(); }
 </script>
 </body>
 </html>
