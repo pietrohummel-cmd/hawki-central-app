@@ -1765,10 +1765,33 @@ function _validaCamposAjuste_(p) {
   return { ok: true, titulo: vTitulo.valor, detalhe: vDetalhe.valor, tipo: tipo, prioridade: prioridade };
 }
 
+/**
+ * A aba do cliente existe MESMO na planilha? Prefixo "Cliente – " sozinho não
+ * prova nada: um nome errado passava e virava ticket órfão na fila (confirmado
+ * no smoke test da v12). Cacheia por execução — o lote chama isto N vezes.
+ */
+var _CACHE_ABAS_CLIENTE_ = null;
+function _abaClienteExiste_(aba) {
+  if (!_CACHE_ABAS_CLIENTE_) {
+    _CACHE_ABAS_CLIENTE_ = {};
+    var todas = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+    for (var i = 0; i < todas.length; i++) {
+      var n = todas[i].getName();
+      if (n.indexOf(PREFIXO_ABA_CLIENTE) === 0) _CACHE_ABAS_CLIENTE_[n] = 1;
+    }
+  }
+  return Object.prototype.hasOwnProperty.call(_CACHE_ABAS_CLIENTE_, aba);
+}
+
 /** op:'criar' — 1 ticket (usado pela captura rápida, fluxo principal). */
 function _ajusteCriar_(p, sbCheck) {
   var aba = String(p.aba || '').trim();
   if (!aba || aba.indexOf(PREFIXO_ABA_CLIENTE) !== 0) return _json({ ok: false, erro: 'cliente inválido' });
+  // Achado L4 da auditoria, CONFIRMADO no smoke test da v12 (31/08): o prefixo
+  // sozinho deixava admin/k_local criar ticket órfão pra cliente inexistente
+  // ("Cliente – Nao Existe SA" foi criado e espelhado). O cs já era barrado por
+  // _clienteVisivelParaEscrita_; agora a existência da aba vale pra todo mundo.
+  if (!_abaClienteExiste_(aba)) return _json({ ok: false, erro: 'cliente não existe: ' + aba });
   var v = _validaCamposAjuste_(p);
   if (!v.ok) return _json(v);
 
@@ -1829,6 +1852,7 @@ function _ajusteCriarLote_(p, sbCheck) {
       var item = itens[i] || {};
       var aba = String(item.cliente_aba || '').trim();
       if (!aba || aba.indexOf(PREFIXO_ABA_CLIENTE) !== 0) { falhas.push({ idx: i, erro: 'cliente inválido' }); continue; }
+      if (!_abaClienteExiste_(aba)) { falhas.push({ idx: i, erro: 'cliente não existe: ' + aba }); continue; }
       var v = _validaCamposAjuste_(item);
       if (!v.ok) { falhas.push({ idx: i, erro: v.erro }); continue; }
       if (sbCheck.cargo !== 'admin' && !_clienteVisivelParaEscrita_(aba, p.sb_token)) {
