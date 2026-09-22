@@ -2815,7 +2815,7 @@ function blocoAnexosHtml(){
   return `<div class="box" style="margin-top:14px"><h2>📎 Anexos de evidência</h2>
     <div id="ev-lista" class="mnote">Carregando anexos…</div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
-      <input type="file" id="ev-arquivo" accept="image/*,.pdf">
+      <input type="file" id="ev-arquivo" accept="image/*,.pdf,.xlsx,.xls,.csv">
       <button class="btn sec" onclick="anexarEvidencia(this)">Anexar</button>
     </div>
     ${semLogin? '<div class="mnote" style="margin-top:6px">Upload/download de anexo só funciona no app publicado (login Supabase).</div>':''}
@@ -2839,7 +2839,7 @@ async function anexarEvidencia(btn){
   if(!sb || !SESSAO){ alert('Upload exige login no app publicado.'); return; }
   const input = document.getElementById('ev-arquivo');
   const file = input.files[0];
-  if(!file){ alert('Escolha um arquivo (imagem ou PDF) antes de anexar.'); return; }
+  if(!file){ alert('Escolha um arquivo (imagem, PDF ou planilha xlsx/csv) antes de anexar.'); return; }
   const path = 'evidencia/'+sanitizaSegmentoPath(aba)+'/'+row+'/'+Date.now()+'_'+file.name.replace(/[^a-zA-Z0-9_.-]/g,'_');
   const res = await uploadParaBucket(path, file, btn);
   input.value='';
@@ -3335,10 +3335,10 @@ function abreAjusteDetalhe(id){
       <button class="btn sec" onclick="fecha('ov-ajt')">Fechar</button>
       <button class="btn" id="ajt-salvar-btn">Salvar</button>
     </div>
-    ${podeVerArquivos()? `<div class="box" style="margin-top:14px"><h2>📎 Anexo (print do bug)</h2>
+    ${podeVerArquivos()? `<div class="box" style="margin-top:14px"><h2>📎 Anexo (print, PDF ou planilha)</h2>
       <div id="ajt-anexos" class="mnote">Carregando anexos…</div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
-        <input type="file" id="ajt-arquivo" accept="image/*,.pdf">
+        <input type="file" id="ajt-arquivo" accept="image/*,.pdf,.xlsx,.xls,.csv">
         <button class="btn sec" data-acao-ajt="anexar" data-id="${esc(a.id)}">Anexar</button>
       </div>
       ${(!MODO_APP||!sb||!SESSAO)? '<div class="mnote" style="margin-top:6px">Upload/download de anexo só funciona no app publicado (login Supabase).</div>':''}
@@ -3438,7 +3438,7 @@ async function anexarAjuste(id){
   if(!sb || !SESSAO){ alert('Upload exige login no app publicado.'); return; }
   const input = document.getElementById('ajt-arquivo');
   const file = input.files[0];
-  if(!file){ alert('Escolha um arquivo (imagem ou PDF) antes de anexar.'); return; }
+  if(!file){ alert('Escolha um arquivo (imagem, PDF ou planilha xlsx/csv) antes de anexar.'); return; }
   const path = 'ajuste/'+sanitizaSegmentoPath(a.cliente_aba)+'/'+id+'/'+Date.now()+'_'+file.name.replace(/[^a-zA-Z0-9_.-]/g,'_');
   const res = await uploadParaBucket(path, file);
   input.value='';
