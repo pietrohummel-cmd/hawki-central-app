@@ -458,6 +458,9 @@ html.modo-treino .topbar{top:40px}
       <textarea id="ajr-detalhe" maxlength="500" placeholder="Contexto completo pra quem for aplicar entender sem precisar caçar no grupo..." style="min-height:80px"></textarea></div>
     <div><label>Tipo</label><select id="ajr-tipo"><option value="conta">Conta (a gente ajusta o bot)</option><option value="produto">Produto (vira chamado GPI)</option></select></div>
     <div><label>Prioridade</label><select id="ajr-prioridade"><option value="maxima">🔴 Máxima</option><option value="media" selected>🟡 Média</option><option value="baixa">◽ Baixa</option></select></div>
+    <div class="mfull"><label>📎 Anexo (opcional — print, PDF ou planilha xlsx/csv)</label>
+      <input type="file" id="ajr-arquivo" accept="image/*,.pdf,.xlsx,.xls,.csv">
+      <div class="mnote" style="margin-top:4px">Sobe junto com o ticket. Dá pra anexar mais depois, abrindo o ticket na fila.</div></div>
   </div>
   <div id="ajr-aviso" class="mnote" style="color:var(--amarelo);margin-top:8px"></div>
   <div id="ajr-erro" class="mnote" style="color:var(--vermelho);margin-top:8px"></div>
@@ -3082,6 +3085,7 @@ function abreAjusteRapido(abaPre){
   document.getElementById('ajr-prioridade').value='media';
   document.getElementById('ajr-erro').textContent='';
   document.getElementById('ajr-aviso').textContent='';
+  const arqReset=document.getElementById('ajr-arquivo'); if(arqReset) arqReset.value=''; // nunca herdar arquivo de um ticket anterior
   abre('ov-ajt-rapido');
 }
 // G1 (achado GRAVE, 26/08): mensagem visível de OQUE foi ajustado no texto,
@@ -3130,8 +3134,27 @@ async function salvarAjusteRapido(){
   const btn=document.getElementById('ajr-salvar-btn');
   const res = await ajusteCriar(aba, titulo, detalhe, tipo, prioridade, btn);
   if(!res) return;
+  // Anexo escolhido no próprio formulário (pedido do Pietro 22/09: a lista da
+  // Sorriso Prime). O ticket JÁ existe neste ponto — o upload usa o id que o
+  // servidor devolveu e o MESMO path de anexarAjuste (ajuste/<aba>/<id>/…),
+  // então a tela de detalhe lista o arquivo igual a um anexo feito depois.
+  // Falha no upload NUNCA desfaz o ticket: avisa e o CS anexa pela tela de
+  // detalhe. Em modo treino/local não sobe nada (mesma régua de uploadParaBucket).
+  const arqInput = document.getElementById('ajr-arquivo');
+  const arquivo = arqInput && arqInput.files ? arqInput.files[0] : null;
+  let msgAnexo = '';
+  if(arquivo){
+    if(MODO_TREINO || !MODO_APP || !sb || !SESSAO){
+      msgAnexo = ' — anexo NÃO enviado (só no app publicado, logado); abra o ticket pra anexar';
+    } else {
+      const pathAnexo = 'ajuste/'+sanitizaSegmentoPath(aba)+'/'+res.id+'/'+Date.now()+'_'+arquivo.name.replace(/[^a-zA-Z0-9_.-]/g,'_');
+      const up = await uploadParaBucket(pathAnexo, arquivo);
+      msgAnexo = up.ok ? ' + anexo enviado' : ' — anexo FALHOU ('+(up.erro||'erro')+'); o ticket existe, anexe pela tela do ticket';
+    }
+    arqInput.value = '';
+  }
   fecha('ov-ajt-rapido');
-  toast('Ajuste criado', 'sucesso');
+  toast('Ajuste criado'+msgAnexo, msgAnexo.indexOf('FALHOU')>=0 || msgAnexo.indexOf('NÃO')>=0 ? 'erro' : 'sucesso');
   if(VIEW==='ajustes' || (VIEW==='clientes' && CLI===aba)) render();
 }
 document.getElementById('ajuste-rapido-btn').onclick = ()=>abreAjusteRapido(CLI||null);
