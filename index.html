@@ -411,15 +411,17 @@ html.modo-treino .topbar{top:40px}
   <div class="mgrid">
     <div class="mfull"><label>Nome do cliente</label><input id="nc-nome" placeholder="Ex: Clínica Odonto Smile"></div>
     <div><label>Sucesso do Cliente (CS)</label><select id="nc-cs"><option>Adão</option><option>William</option><option>Pietro</option></select></div>
-    <div><label>Data da reunião de onboarding</label><input id="nc-onb" type="date"></div>
+    <div><label>Data do kickoff (D+0)</label><input id="nc-onb" type="date"></div>
     <div><label>Gestor de tráfego</label><select id="nc-gt"><option>Gestora</option><option>—</option></select></div>
     <div><label>Tipo de serviço</label><select id="nc-tipo"><option>Sofia (IA only)</option><option>Tráfego</option><option>COMBO (Tráfego + Sofia)</option><option>Sofia SaaS</option></select></div>
     <div><label>Aniversário do cliente</label><input id="nc-ani" type="date"></div>
     <div><label>Data de assinatura</label><input id="nc-ass" type="date"></div>
+    <div class="mfull" style="display:flex;align-items:flex-start;gap:8px"><input id="nc-andamento" type="checkbox" style="width:auto;margin-top:3px" onchange="ncAndamento()"><label style="margin:0;text-transform:none;font-size:13px;color:var(--text);letter-spacing:0">Projeto já em andamento — criar <b>sem kickoff</b> (as atividades entram sem prazo, como "aguarda âncora", e não cobram atraso). Dá pra ancorar depois, no dia que o kickoff acontecer.</label></div>
     <div class="mfull"><label>Observações rápidas</label><textarea id="nc-obs" placeholder="Contexto rápido do cliente, particularidades..."></textarea></div>
   </div>
   <div class="aviso">Ao criar um cliente, o <b>modelo de prazos padrão</b> é aplicado automaticamente. A data do kickoff vira o <span class="d0">D+0</span> e os prazos de cada atividade são calculados a partir dela (pré-kickoff conta da assinatura). Design atende em time compartilhado (GT + IA de imagem).</div>
-  <div class="mfoot"><button class="btn sec" onclick="fecha('ov-novo')">Cancelar</button><button class="btn" onclick="criarCliente()">Criar cliente</button></div>
+  <div id="nc-erro" class="mnote" style="color:var(--vermelho);margin-top:8px"></div>
+  <div class="mfoot"><button class="btn sec" onclick="fecha('ov-novo')">Cancelar</button><button class="btn" id="nc-salvar" onclick="criarCliente()">Criar cliente</button></div>
 </div></div>
 
 <!-- modal nova tarefa -->
@@ -1575,14 +1577,65 @@ function fecha(id){
 }
 document.getElementById('novo').onclick=()=>abre('ov-novo');
 document.getElementById('nova-tarefa-btn').onclick=()=>abreNovaTarefa(CLI||null);
-function criarCliente(){
+// Marca "projeto em andamento": desliga o campo de kickoff (vai vazio pro
+// GAS, que aceita kickoff nulo — a aba nasce com a âncora D em branco e as
+// atividades em "⏳ aguarda âncora", sem cobrar atraso de etapa que já passou).
+function ncAndamento(){
+  const ck=document.getElementById('nc-andamento').checked;
+  const onb=document.getElementById('nc-onb');
+  onb.disabled=ck; if(ck) onb.value='';
+  onb.style.opacity=ck?'.45':'';
+}
+
+// label do select -> código do modelo aceito pelo GAS (_instanciarViaApi_):
+// 1=Sofia (IA only), 2=Tráfego, 3=COMBO, 4=Sofia SaaS.
+const NC_TIPO_COD = {'Sofia (IA only)':1,'Tráfego':2,'COMBO (Tráfego + Sofia)':3,'Sofia SaaS':4};
+
+// Cria o cliente DE VERDADE pelo endpoint que já existia no Apps Script
+// (acao:'instanciar', admin-only, com espelho imediato no Supabase). Antes
+// este botão só copiava os dados pro clipboard e mandava abrir a planilha —
+// na prática ninguém cadastrava cliente sozinho pelo painel.
+// Os metadados que o endpoint não recebe (aniversário, GT, observações) são
+// gravados logo depois pela ação 'cel', a mesma que os campos do cabeçalho
+// do cliente já usam (H1 aniversário, H2 GT, K2 observações).
+async function criarCliente(){
   if(treinoBloqueia('Criar cliente')) return;
   const v=id=>document.getElementById(id).value.trim();
-  const txt=`NOVO CLIENTE (Central)\nNome: ${v('nc-nome')}\nTipo: ${v('nc-tipo')}\nCS: ${v('nc-cs')}\nGT: ${v('nc-gt')}\nAssinatura: ${v('nc-ass')}\nKickoff/onboarding: ${v('nc-onb')}\nAniversário Dr: ${v('nc-ani')}\nObs: ${v('nc-obs')}`;
-  navigator.clipboard && navigator.clipboard.writeText(txt);
-  alert('Dados copiados.\n\nA criação hoje roda na planilha: menu "Central > Instanciar cliente novo" (Apps Script) — cole os dados lá.\nQuando a Fase 4 (ClickUp) entrar, este botão cria sozinho.');
-  if(D.url_planilha) window.open(D.url_planilha,'_blank');
+  const erroEl=document.getElementById('nc-erro'); erroEl.textContent='';
+  const btn=document.getElementById('nc-salvar');
+  const nome=v('nc-nome'), tipoLabel=v('nc-tipo'), ass=v('nc-ass');
+  const emAndamento=document.getElementById('nc-andamento').checked;
+  const kick=emAndamento? '' : v('nc-onb');
+  if(!nome){ erroEl.textContent='Informe o nome do cliente.'; return; }
+  if(nome.length>90){ erroEl.textContent='Nome muito longo (máx. 90 caracteres).'; return; }
+  if(/[\[\]\*\?\/\\:]/.test(nome)){ erroEl.textContent='O nome não pode ter [ ] * ? / \\ : — são proibidos em nome de aba.'; return; }
+  if(/^[=+\-@]/.test(nome)){ erroEl.textContent='O nome não pode começar com = + - @.'; return; }
+  if(!ass){ erroEl.textContent='Informe a data de assinatura (é ela que ancora as tarefas de pré-kickoff).'; return; }
+  if(!kick && !emAndamento){ erroEl.textContent='Informe a data do kickoff ou marque "Projeto já em andamento".'; return; }
+  if(D.clientes && D.clientes.some(c=>(c.nome||'').trim().toLowerCase()===nome.toLowerCase())){
+    erroEl.textContent='Já existe um cliente com esse nome na Central.'; return;
+  }
+  const cod=NC_TIPO_COD[tipoLabel];
+  if(!cod){ erroEl.textContent='Tipo de serviço inválido.'; return; }
+  const r=await gasSave({acao:'instanciar', nome, tipo:cod, assinatura:ass, kickoff:kick}, btn);
+  if(!r) return;                       // gasSave já mostrou o erro
+  const aba=r.aba || ('Cliente – '+nome);
+  // metadados opcionais: cada um é uma gravação independente. Se alguma
+  // falhar, o cliente continua criado — avisa, não desfaz.
+  const extras=[['H1',v('nc-ani')],['H2',v('nc-gt')==='—'?'':v('nc-gt')],['K2',v('nc-obs')]].filter(x=>x[1]);
+  let falhou=0;
+  for(const par of extras){ if(!await gasSave({acao:'cel',aba,cel:par[0],valor:par[1]})) falhou++; }
+  if(r.espelho && r.espelho!=='ok' && r.espelho!=='sem_chave'){
+    toast('Cliente criado, mas o espelho falhou — pode demorar até o próximo cron pra aparecer pros outros.','erro');
+  } else {
+    toast(emAndamento? 'Cliente criado sem kickoff — as tarefas ficam sem prazo até você ancorar.' : 'Cliente criado com o modelo de prazos aplicado.','sucesso');
+  }
+  if(falhou) toast('Atenção: '+falhou+' dado(s) do cabeçalho não salvaram (aniversário/GT/obs). Dá pra preencher na aba do cliente.','erro');
   fecha('ov-novo');
+  ['nc-nome','nc-ani','nc-ass','nc-onb','nc-obs'].forEach(i=>{const el=document.getElementById(i); if(el) el.value='';});
+  const ckEl=document.getElementById('nc-andamento'); if(ckEl){ ckEl.checked=false; ncAndamento(); }
+  if(typeof recarregaDadosSilencioso==='function') await recarregaDadosSilencioso();
+  if(typeof render==='function') render();
 }
 
 // ---- popup de atividade (form fiel ao print; Salvar grava via API) ----
