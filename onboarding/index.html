@@ -366,8 +366,12 @@ function nomesUni(){
   }
   return out;
 }
-/* a resposta de "quantas unidades" abre as fichas sozinha. Só ACRESCENTA ficha,
-   nunca remove: remover apagaria resposta já dada. */
+/* A resposta de "quantas unidades" abre as fichas sozinha, mas SÓ no momento em
+   que a pessoa responde (onchange do select). Nunca a cada render: rodando em
+   build() ela reabria na hora a ficha que a pessoa acabara de remover, e o
+   botão Remover virava decoração. Depois da escolha, quem manda nas fichas é
+   Adicionar/Remover, e o state.rep salvo é que vale ao recarregar.
+   Só ACRESCENTA ficha, nunca remove: remover apagaria resposta já dada. */
 function sincUni(){
   if(SI_UNI<0||!K_QTD) return;
   var n=parseInt(String(get(K_QTD)||''),10);
@@ -556,7 +560,6 @@ function nomesDeIndices(v){
 var ETAPA={1:['Etapa 1','para ligar a conta'],2:['Etapa 2','como ela fala com o seu paciente'],3:['Etapa 3','o combinado']};
 
 function build(){
-  sincUni();
   root.innerHTML='';
   var cur=0;
   S.forEach(function(sec,si){
