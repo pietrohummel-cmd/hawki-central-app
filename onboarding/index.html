@@ -432,17 +432,20 @@ function campo(key,q,sl){
     });
     box2.appendChild(w2);
   } else if(ty==='m'||ty==='u'){
+    /* em 'u' o rótulo é o nome da unidade mas o que fica salvo é o ÍNDICE:
+       renomear a unidade depois não apaga a marcação */
     var lista=(ty==='u'?nomesUni():(ex.o||[]));
     var cur=Array.isArray(v)?v:[];
     var w3=el('div','opts');
-    lista.forEach(function(o){
-      var on=cur.indexOf(o)>=0;
+    lista.forEach(function(o,oi){
+      var val=(ty==='u'?String(oi):o);
+      var on=cur.indexOf(val)>=0;
       var lab=el('label','opt'+(on?' sel':''));
       var c=el('input'); c.type='checkbox'; c.checked=on;
       c.onchange=function(){
         var arr=(Array.isArray(get(key))?get(key).slice():[]);
-        var ix=arr.indexOf(o);
-        if(c.checked){ if(ix<0)arr.push(o) } else if(ix>=0){ arr.splice(ix,1) }
+        var ix=arr.indexOf(val);
+        if(c.checked){ if(ix<0)arr.push(val) } else if(ix>=0){ arr.splice(ix,1) }
         set(key,arr); lab.className='opt'+(c.checked?' sel':'');
       };
       lab.appendChild(c); lab.appendChild(el('span',null,o)); w3.appendChild(lab);
@@ -493,6 +496,63 @@ function field(key,q){
 /* pergunta que só existe quando há mais de uma unidade */
 function visivel(q){ return !((q[2]||{}).mu) || nUni()>1 }
 
+/* chaves das perguntas que podem variar por unidade */
+var BASES_VU=[];
+S.forEach(function(sec,si){ if(sec.rep) return;
+  sec.q.forEach(function(q,qi){ if((q[2]||{}).vu) BASES_VU.push('s'+si+'_q'+qi) }) });
+
+/* Remover ficha é o ponto onde dado de unidade errada nasce. Três coisas
+   precisam andar juntas: as respostas das fichas seguintes sobem um lugar,
+   as respostas POR UNIDADE das perguntas que variam sobem junto, e as
+   marcações de "em qual unidade atende" são corrigidas. Sem isso, a próxima
+   unidade criada herdaria o preço da unidade apagada. */
+function removeFicha(si,r){
+  var sec=S[si], n=repCount(si);
+  if(n<=1) return;
+  if(sec.uni){
+    /* marcações de unidade guardam o índice: tira o removido, desce os maiores */
+    S.forEach(function(s2,si2){
+      var reps = s2.rep ? (state.rep['s'+si2]||1) : 1;
+      s2.q.forEach(function(q2,qi2){
+        if(q2[1]!=='u') return;
+        for(var k=0;k<reps;k++){
+          var kk = s2.rep ? ('s'+si2+'_r'+k+'_q'+qi2) : ('s'+si2+'_q'+qi2);
+          var v = state.a[kk];
+          if(!Array.isArray(v)) continue;
+          state.a[kk]=v.filter(function(x){ return parseInt(x,10)!==r })
+                       .map(function(x){ var i=parseInt(x,10); return String(i>r?i-1:i) });
+        }
+      });
+    });
+    BASES_VU.forEach(function(base){
+      for(var k=r;k<n-1;k++){
+        var de=base+'_u'+(k+1), para=base+'_u'+k;
+        if(state.a[de]!==undefined) state.a[para]=state.a[de]; else delete state.a[para];
+      }
+      delete state.a[base+'_u'+(n-1)];
+    });
+  }
+  for(var k=r;k<n-1;k++){
+    (function(k){
+      sec.q.forEach(function(q,qi){
+        var de='s'+si+'_r'+(k+1)+'_q'+qi, para='s'+si+'_r'+k+'_q'+qi;
+        if(state.a[de]!==undefined) state.a[para]=state.a[de]; else delete state.a[para];
+      });
+    })(k);
+  }
+  sec.q.forEach(function(q,qi){ delete state.a['s'+si+'_r'+(n-1)+'_q'+qi] });
+  state.rep['s'+si]=n-1;
+  save(); build(); refresh();
+}
+
+/* "em qual unidade atende" guarda índice, não nome: renomear a unidade não
+   desfaz a marcação */
+function nomesDeIndices(v){
+  var nm=nomesUni();
+  return (Array.isArray(v)?v:[]).map(function(x){
+    var i=parseInt(x,10); return nm[i]||('Unidade '+(i+1)) });
+}
+
 var ETAPA={1:['Etapa 1','para ligar a conta'],2:['Etapa 2','como ela fala com o seu paciente'],3:['Etapa 3','o combinado']};
 
 function build(){
@@ -531,10 +591,7 @@ function build(){
           rh.appendChild(el('div','grow'));
           if(r>0){
             var del=el('button','btn sm gh','Remover');
-            del.onclick=function(){
-              sec.q.forEach(function(q,qi){ delete state.a['s'+si+'_r'+r+'_q'+qi] });
-              state.rep['s'+si]=repCount(si)-1; save(); build(); refresh();
-            };
+            del.onclick=function(){ removeFicha(si,r) };
             rh.appendChild(del);
           }
           rep.appendChild(rh);
@@ -620,7 +677,8 @@ function md(){
     }
     var v=get(k);
     if(filled(v)){
-      body.push('**'+q[0]+'**'+((ex.vu&&nUni()>1)?' — igual em todas as unidades':'')+'  \n'+fmt(v)+'\n');
+      var txt=(ty==='u')?nomesDeIndices(v).join(', '):fmt(v);
+      body.push('**'+q[0]+'**'+((ex.vu&&nUni()>1)?' — igual em todas as unidades':'')+'  \n'+txt+'\n');
     }
     else if(ex.b===1) pend.push(ctx+q[0]);
     else if(ex.b===2) pend2.push(ctx+q[0]);
