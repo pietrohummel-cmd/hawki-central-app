@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onboarding Sofia</title>
+<style>
+:root{
+  --bg:#0c0e12; --bg2:#13161c; --bg3:#191d25; --line:#262c36; --line2:#323a47;
+  --tx:#e8eaf0; --tx2:#a8b0bf; --tx3:#6f7889;
+  --ac:#4ea1ff; --ac2:#1b4b7a; --ok:#35c98a; --warn:#ffb020; --red:#ff6b6b;
+  --r:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--tx);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--ac)}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px 120px}
+header.top{position:sticky;top:0;z-index:30;background:rgba(12,14,18,.94);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top .in{max-width:860px;margin:0 auto;padding:12px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.brand{font-weight:700;font-size:16px}
+.brand span{color:var(--ac)}
+.pill{font-size:12px;padding:4px 9px;border-radius:999px;background:var(--bg3);border:1px solid var(--line2);color:var(--tx2);white-space:nowrap}
+.pill b{color:var(--tx)}
+.grow{flex:1 1 auto}
+.bar{height:4px;background:var(--bg3);border-radius:999px;overflow:hidden;width:100%}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--ac),var(--ok));width:0%;transition:width .3s}
+.hero{padding:26px 0 4px}
+.hero h1{font-size:26px;line-height:1.2;margin:0 0 10px}
+.hero p{color:var(--tx2);margin:0 0 10px}
+.note{background:var(--bg2);border:1px solid var(--line);border-left:3px solid var(--ac);border-radius:var(--r);padding:14px 16px;margin:16px 0;color:var(--tx2);font-size:14px}
+.note b{color:var(--tx)}
+.note.warn{border-left-color:var(--warn)}
+.etapa{display:flex;align-items:center;gap:12px;margin:30px 0 6px}
+.etapa .ln{flex:1 1 auto;height:1px;background:var(--line2)}
+.etapa b{font-size:12px;letter-spacing:1.4px;color:var(--ac);text-transform:uppercase;white-space:nowrap}
+.etapa i{font-style:normal;font-size:12px;color:var(--tx3);white-space:nowrap}
+section.blk{background:var(--bg2);border:1px solid var(--line);border-radius:14px;margin:14px 0;overflow:hidden}
+.bh{display:flex;gap:12px;align-items:flex-start;padding:16px 18px;cursor:pointer;user-select:none}
+.bh:hover{background:var(--bg3)}
+.bn{flex:0 0 32px;height:32px;border-radius:9px;background:var(--ac2);color:#dbeeff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}
+.bt{flex:1 1 auto;min-width:0}
+.bt h2{margin:0;font-size:17px;line-height:1.3}
+.bt p{margin:4px 0 0;color:var(--tx3);font-size:13px}
+.bcount{flex:0 0 auto;font-size:12px;color:var(--tx3);text-align:right;white-space:nowrap}
+.bcount .miss{color:var(--warn)}
+.bcount .done{color:var(--ok)}
+.chev{flex:0 0 auto;color:var(--tx3);transition:transform .2s;font-size:13px}
+section.blk.open .chev{transform:rotate(90deg)}
+.bb{display:none;padding:0 18px 18px;border-top:1px solid var(--line)}
+section.blk.open .bb{display:block}
+.q{padding:16px 0;border-bottom:1px solid var(--line)}
+.q:last-child{border-bottom:0;padding-bottom:4px}
+.q label.lb{display:block;font-weight:600;font-size:14.5px;margin-bottom:3px}
+.q .hint{color:var(--tx3);font-size:12.5px;margin:2px 0 8px}
+.tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.4px;padding:2px 6px;border-radius:5px;margin-left:7px;vertical-align:1px}
+.tag.b{background:#3a1d1d;color:#ff9c9c;border:1px solid #5c2b2b}
+.tag.b2{background:#38300f;color:#ffd58f;border:1px solid #574818}
+input[type=text],input[type=tel],input[type=email],input[type=number],input[type=date],select,textarea{
+  width:100%;background:var(--bg3);color:var(--tx);border:1px solid var(--line2);border-radius:9px;padding:10px 12px;font:inherit;font-size:14.5px}
+textarea{min-height:92px;resize:vertical;line-height:1.5}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ac);box-shadow:0 0 0 3px rgba(78,161,255,.14)}
+.opts{display:flex;flex-direction:column;gap:7px;margin-top:4px}
+.opts.row{flex-direction:row;flex-wrap:wrap;gap:8px}
+.opt{display:flex;gap:9px;align-items:flex-start;background:var(--bg3);border:1px solid var(--line2);border-radius:9px;padding:9px 11px;cursor:pointer;font-size:14px}
+.opt:hover{background:#1d222b}
+.opt input{margin:2px 0 0;accent-color:var(--ac);flex:0 0 auto}
+.opt.sel{border-color:var(--ac);background:rgba(78,161,255,.09)}
+.rep{border:1px dashed var(--line2);border-radius:12px;padding:0 14px;margin:14px 0;background:rgba(0,0,0,.14)}
+.rh{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.rh strong{font-size:14px}
+.btn{background:var(--bg3);color:var(--tx);border:1px solid var(--line2);border-radius:9px;padding:9px 14px;font:inherit;font-size:14px;cursor:pointer}
+.btn:hover{border-color:var(--ac);color:#fff}
+.btn.pri{background:var(--ac2);border-color:#2b6ca8;color:#eaf4ff;font-weight:600}
+.btn.pri:hover{background:#215d94}
+.btn.sm{padding:5px 10px;font-size:12.5px}
+.btn.gh{background:transparent}
+.acts{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}
+.foot{position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(12,14,18,.96);backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:10px 16px}
+.foot .in{max-width:860px;margin:0 auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.foot .st{font-size:12.5px;color:var(--tx3);flex:1 1 140px}
+.chk{display:flex;gap:11px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--line);font-size:14px;cursor:pointer}
+.chk:last-child{border-bottom:0}
+.chk input{margin:3px 0 0;accent-color:var(--ok);flex:0 0 auto;width:17px;height:17px}
+.chk span{color:var(--tx2)}
+.chk.on span{color:var(--tx)}
+.pd{padding:11px 0;border-bottom:1px solid var(--line);font-size:14px;display:flex;gap:10px;align-items:flex-start}
+.pd:last-of-type{border-bottom:0}
+.pd .tx{flex:1 1 auto;color:var(--tx2)}
+.pd.diff .tx{color:var(--warn)}
+.pd .btn{flex:0 0 auto}
+.pdfix{padding:0 0 12px}
+dialog{background:var(--bg2);color:var(--tx);border:1px solid var(--line2);border-radius:14px;max-width:760px;width:94%;padding:0}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.dh{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.dh strong{flex:1}
+dialog pre{margin:0;padding:16px;max-height:62vh;overflow:auto;white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--tx2)}
+.toast{position:fixed;bottom:76px;left:50%;transform:translateX(-50%);background:var(--ok);color:#06240f;font-weight:600;font-size:14px;padding:10px 18px;border-radius:999px;z-index:60;opacity:0;pointer-events:none;transition:opacity .25s}
+.toast.on{opacity:1}
+.vu{padding:16px 0;border-bottom:1px solid var(--line)}
+.vu:last-child{border-bottom:0}
+.vuhead label.lb{display:block;font-weight:600;font-size:14.5px;margin-bottom:3px}
+.vuhead .hint{color:var(--tx3);font-size:12.5px;margin:2px 0 8px}
+.vubar{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 4px}
+.vuopt{background:var(--bg3);color:var(--tx2);border:1px solid var(--line2);border-radius:999px;padding:5px 12px;font:inherit;font-size:12.5px;cursor:pointer}
+.vuopt:hover{color:#fff;border-color:var(--ac)}
+.vuopt.sel{background:var(--ac2);border-color:#2b6ca8;color:#eaf4ff;font-weight:600}
+.vu .q{padding:6px 0 0;border-bottom:0}
+.vusub{border-left:2px solid var(--ac2);padding:2px 0 8px 12px;margin:8px 0 0}
+.vun{font-size:12.5px;font-weight:700;color:var(--ac);letter-spacing:.2px;margin-bottom:2px}
+@media (max-width:640px){
+  .hero h1{font-size:22px}
+  .bh{padding:14px}
+  .bb{padding:0 14px 14px}
+  .bcount{display:none}
+  .opts.row{flex-direction:column}
+  .pd{flex-direction:column;gap:6px}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="in">
+    <div class="brand">Onboarding <span>Sofia</span></div>
+    <div class="grow"></div>
+    <div class="pill">Essencial: <b id="pB">0/0</b></div>
+    <div class="pill">Pode vir depois: <b id="pB2">0/0</b></div>
+  </div>
+  <div class="bar"><i id="pbar"></i></div>
+</header>
+
+<div class="wrap">
+  <div class="hero">
+    <h1>Formulário de estruturação da Sofia</h1>
+    <p>Três etapas de cerca de 10 minutos cada. Pode parar no meio e voltar depois: as respostas ficam salvas neste navegador.</p>
+  </div>
+
+  <div class="note">
+    <b>Etapa 1</b> é o que precisamos para ligar a conta: unidade, sistema, número e agenda.<br>
+    <b>Etapa 2</b> é o que define como ela fala com o seu paciente: serviços, preço, convênio e textos.<br>
+    <b>Etapa 3</b> fecha o combinado: padrões da casa, escopo e critério de aceite.<br><br>
+    Campos <span class="tag b">ESSENCIAL</span> seguram o início. Campos <span class="tag b2">PODE VIR DEPOIS</span> podem chegar nos três primeiros dias, mas enquanto não vierem a Sofia vai errar naquele assunto.<br><br>
+    Tem mais de uma unidade? Responda uma vez só. Onde a resposta muda de uma porta para a outra, aparece a escolha <b>igual nas unidades</b> ou <b>diferente por unidade</b>.<br><br>
+    No fim, clique em <b>Enviar para a Hawki</b>. Se preferir, use <b>Revisar respostas</b> para ler tudo antes.
+  </div>
+
+  <div class="acts">
+    <button class="btn" id="bExpand">Abrir tudo</button>
+    <button class="btn" id="bCollapse">Fechar tudo</button>
+  </div>
+
+  <div id="form"></div>
+
+  <div class="note warn" style="margin-top:28px">
+    <b>Antes de enviar, confira os três que mais dão retrabalho:</b> a grade de cada profissional tem dia, hora de início, hora de fim e almoço? Os textos de abertura, preço, convênio e confirmação estão escritos do jeito que você quer que o paciente leia? A lista de telefones que a Sofia nunca deve responder está preenchida?
+  </div>
+
+  <div class="acts">
+    <button class="btn pri" id="bSend">Enviar para a Hawki</button>
+    <button class="btn" id="bGen">Revisar respostas</button>
+    <button class="btn" id="bJson">Baixar .json</button>
+    <button class="btn gh" id="bClear">Limpar tudo</button>
+  </div>
+</div>
+
+<div class="foot"><div class="in">
+  <div class="st" id="stat">Carregando…</div>
+  <button class="btn sm" id="bGen2">Revisar respostas</button>
+</div></div>
+
+<dialog id="dlg">
+  <div class="dh"><strong>Respostas</strong>
+    <button class="btn sm" id="bCopy">Copiar</button>
+    <button class="btn sm" id="bDl">Baixar .md</button>
+    <button class="btn sm gh" id="bClose">Fechar</button>
+  </div>
+  <pre id="out"></pre>
+</dialog>
+
+<div class="toast" id="toast">Copiado</div>
+
+<script>
+/* tipos: t texto · l longo · s select · r radio · m múltipla · y sim/não · c ciência · p padrão da casa */
+var SIM_NAO=['Sim','Não'];
+var S=[
+
+{et:1,t:'A clínica e quem decide',d:'Para sabermos com quem falar e quem bate o martelo.',q:[
+ ['Nome da clínica, como o paciente a conhece','t',{b:1}],
+ ['Ponto focal do projeto: quem decide e responde por vocês (nome e WhatsApp)','l',{b:1,h:'Uma pessoa só. É a resposta dela que vale.'}],
+ ['Quem recebe aviso técnico, por exemplo se o WhatsApp cair (nome e WhatsApp)','l',{b:1}],
+ ['Quantas unidades a clínica tem','s',{b:1,qtd:1,o:['1','2','3','4 ou mais']}]
+]},
+
+{et:1,t:'Unidades',d:'Uma ficha por unidade. Se são duas portas, são duas fichas. Daí para frente, tudo que é igual nas duas você responde uma vez só.',uni:1,rep:{label:'Unidade'},q:[
+ ['Nome desta unidade, como o paciente a chama','t',{b:1}],
+ ['Cidade e estado','t',{b:1,h:'Usamos para acertar o fuso. Fuso errado faz ela oferecer horário já vencido.'}],
+ ['Endereço completo: rua, número, complemento, piso ou sala, bairro e CEP','l',{b:1,h:'Se o Google Maps mostrar diferente do que está na placa, escreva o que o paciente deve receber.'}],
+ ['Link do Google Maps desta unidade','t',{b:1}],
+ ['WhatsApp ou telefone desta unidade','t',{b:1}],
+ ['Horário de funcionamento de segunda a domingo, com o almoço de cada dia','l',{b:1,h:'Dia por dia. Exemplo: seg a qui 9h às 19h, almoço 12h às 13h; sex 9h às 17h; sáb 8h às 12h; dom fechado.'}],
+ ['Dias que fecham por rotina, mesmo com a agenda do sistema aberta','t',{b:2,h:'Exemplo: toda segunda as doutoras estão em curso.'}],
+ ['Esta unidade tem tabela de preços própria?','y',{b:1}]
+]},
+
+{et:1,t:'Sistema de gestão e acesso',d:'A Sofia marca dentro do seu sistema. Sem acesso com a permissão certa ela conversa bem e não marca nada.',q:[
+ ['Qual sistema de gestão e agenda vocês usam','t',{vu:1,b:1,h:'Exemplo: Clinicorp, Feegow, Simples Dental, Controle Odonto, Zenfisio, Prontuário Verde, SoftClinica, agenda no papel.'}],
+ ['Foi criado um usuário para a Sofia com permissão de criar, cancelar e remarcar consulta? Quem é o administrador que criou','l',{vu:1,b:1,h:'Usuário só de atendente não cancela nem remarca, e isso derruba a entrega inteira.'}],
+ ['Como vamos receber essa credencial','s',{b:1,o:['Link de senha temporária','Por ligação com a equipe','Cofre de senhas','Combino com a equipe'],h:'Nunca mande senha no grupo.'}],
+ ['Existe no sistema uma categoria ou tipo de agendamento para a Sofia usar? Quem cria','l',{vu:1,b:1,h:'Sem a categoria certa o sistema recusa o agendamento.'}],
+ ['Há migração de sistema prevista nos próximos 90 dias?','y',{b:1,h:'Trocar de sistema no meio exige integração nova e prazo novo.'}]
+]},
+
+{et:1,t:'Número de WhatsApp',d:'É o ponto mais frágil da operação. Se cada unidade tem o seu número, marque diferente por unidade.',q:[
+ ['Número que será conectado à Sofia','t',{vu:1,b:1}],
+ ['Esse é o mesmo número que recebe os anúncios?','y',{vu:1,b:1}],
+ ['Quem fica com o aparelho, vai ler o código de conexão, e em qual dia','l',{vu:1,b:1,h:'O aparelho precisa ficar ligado na internet. Se desligar, a Sofia cai.'}],
+ ['Em qual horário ela deve responder','s',{vu:1,b:1,o:['24 horas, todos os dias','Só fora do horário da recepção','Só no horário comercial']}],
+ ['Esse número já foi banido ou restringido pelo WhatsApp alguma vez?','y',{vu:1,b:2}]
+]},
+
+{et:1,t:'Profissionais e agendas',d:'Uma ficha por profissional que recebe paciente. Este é o bloco que mais gera erro quando vem incompleto: horário que não está aqui não existe para a Sofia.',rep:{label:'Profissional'},q:[
+ ['Nome como está no sistema, e como o paciente deve chamar','l',{b:1,h:'Se a clínica fala Bella e o sistema diz Elisabeth, escreva os dois.'}],
+ ['Especialidades','t',{b:1}],
+ ['Em qual unidade esta pessoa atende','u',{b:1,mu:1,h:'Marque todas em que ela tem agenda própria.'}],
+ ['Faz avaliação de primeira vez?','y',{b:1}],
+ ['Grade: para cada dia da semana, hora de início, hora de fim e almoço','l',{b:1,h:'Dia por dia, e diga os dias em que não atende. Exemplo: seg 9h às 18h com almoço 12h30 às 13h30; ter não atende; qua 14h às 20h.'}],
+ ['Duração de cada tipo de atendimento','t',{b:1,h:'Exemplo: avaliação 45 min, retorno 30 min, procedimento 1h.'}],
+ ['A Sofia pode oferecer essa pessoa?','s',{b:1,o:['Sim, normalmente','Só quando o paciente pedir pelo nome','Nunca oferecer']}]
+]},
+
+{et:2,t:'O que vocês fazem e o que não fazem',d:'O que ela pode oferecer, e onde ela precisa parar.',q:[
+ ['O que a clínica faz hoje','l',{vu:1,b:1}],
+ ['O que a clínica não faz, e a frase que ela deve usar em cada caso','l',{vu:1,b:1,h:'Exemplo: não fazemos radiografia aqui; o paciente traz o exame ou indicamos a clínica X.'}],
+ ['Casos e públicos que ela não deve agendar, e quem assume cada um','l',{vu:1,b:1,h:'Exemplo: criança, gestante, pedido de receita ou atestado, paciente de outra cidade.'}],
+ ['Paciente com dor ou urgência: o que ela faz','s',{vu:1,b:1,o:['Orienta ir direto à clínica','Encaixa no primeiro horário','Passa para a equipe na hora']}],
+ ['Afirmações que ela nunca pode fazer','l',{b:2,h:'Exemplo: nunca afirmar que tem osso suficiente, nunca dar diagnóstico, nunca falar tempo de tratamento.'}]
+]},
+
+{et:2,t:'Preço e pagamento',d:'Valor errado e promoção vencida são as queixas mais caras. Só entra o que estiver aqui.',q:[
+ ['A Sofia pode dizer valor?','s',{b:1,o:['Nunca, valor só na clínica','Só o valor da avaliação','Faixa aproximada','Sim, o valor cheio']}],
+ ['Tabela de valores que ela pode usar, serviço por serviço','l',{vu:1,b:1,h:'Se alguma unidade tem preço diferente, escreva separado. Preço de unidade errada é o erro mais comum.'}],
+ ['A primeira avaliação tem custo? Qual termo usar e qual é proibido','l',{vu:1,b:1,h:'Exemplo: dizer sem custo, nunca dizer gratuito nem promoção.'}],
+ ['Formas de pagamento, parcelamento máximo e entrada mínima','l',{vu:1,b:1}],
+ ['Promoções e condições vigentes, e até que data valem','l',{vu:1,b:1,h:'Ela não descobre sozinha quando muda. Até ser avisada, repete o preço antigo.'}],
+ ['Ela pode enviar chave PIX, boleto ou link de pagamento?','s',{b:2,o:['Não, nada disso','Só link oficial da clínica','Sim']}]
+]},
+
+{et:2,t:'Convênio',d:'Em quase toda conta esta é a pergunta número um de quem vem do anúncio.',q:[
+ ['A clínica aceita convênio? Se sim, quais e para quais procedimentos','l',{vu:1,b:1,h:'Diga se o plano é médico ou odontológico. O paciente confunde os dois.'}],
+ ['Frase exata para quem tem um convênio que vocês não aceitam','l',{b:1}],
+ ['Avisar na primeira mensagem que atendem somente particular?','y',{vu:1,b:1,h:'Avisar cedo economiza conversa, mas derruba parte dos agendamentos. A decisão é sua.'}]
+]},
+
+{et:2,t:'Jeito de falar e os textos que resolvem 80%',d:'O que você escrever aqui entra palavra por palavra. Essas quatro respostas cobrem a maior parte do que o paciente pergunta.',q:[
+ ['Tom da comunicação','r',{b:1,o:['Formal','Profissional e acolhedor','Informal moderado','Bem informal e próximo']}],
+ ['Emojis e como ela chama o paciente','l',{b:1,h:'Exemplo: no máximo 1 emoji por mensagem, tratar por você, nunca por senhora.'}],
+ ['Palavras e expressões proibidas','t',{b:2}],
+ ['Texto exato da primeira mensagem que o paciente recebe','l',{b:1}],
+ ['Resposta para quanto custa','l',{b:1}],
+ ['Resposta para aceita convênio','l',{b:1}],
+ ['Resposta para onde fica a clínica','l',{vu:1,b:1}],
+ ['Texto de confirmação depois de agendar, com data, hora, endereço e o que levar','l',{vu:1,b:1}]
+]},
+
+{et:2,t:'Quem assume e quem não é paciente',d:'Evita a Sofia escrevendo por cima da recepção e fornecedor entrando no funil de venda.',q:[
+ ['Quando alguém da equipe responde pelo mesmo número, o que ela faz','s',{b:1,o:['Para e não volta mais naquela conversa','Para e volta se o paciente escrever depois','Continua junto']}],
+ ['Em que situações ela deve chamar a equipe, e quem recebe esse chamado','l',{vu:1,b:1}],
+ ['Telefones que ela nunca deve responder','l',{vu:1,b:1,h:'Equipe, laboratório, fornecedor, contador, número pessoal dos sócios, família. Nome e número de cada um.'}],
+ ['A recepção marca direto no sistema? Todo agendamento feito à mão vai ser lançado lá?','l',{vu:1,b:1,h:'Agendamento que não está no sistema ela não enxerga: oferece o horário de novo e manda lembrete errado.'}]
+]},
+
+{et:2,t:'Lembrete e follow-up',d:'Só o essencial. Os textos nós escrevemos e você aprova.',q:[
+ ['Lembrete de consulta: quantas horas antes e a que hora do dia','t',{b:1,h:'Lembrete 3 horas antes de uma consulta das 8h sai às 5h da manhã. Diga o horário que vocês querem.'}],
+ ['O lembrete vale para quem','s',{b:1,o:['Todos os pacientes agendados no sistema','Somente quem conversou com a Sofia','Somente avaliações novas','Não quero lembrete']}],
+ ['Horário em que ela nunca pode enviar nada','t',{b:2}]
+]},
+
+{et:3,t:'Padrão da casa',d:'São as regras que usamos em todas as contas e que funcionam na maioria dos casos. Leia e marque só o que for diferente na sua clínica.',pd:1,q:[
+ ['Não marca em cima da hora: só a partir de 2 horas depois da conversa.','p',{}],
+ ['Não oferece horário com mais de 60 dias de antecedência.','p',{}],
+ ['Oferece 2 horários por vez, um por linha, começando pelo mais próximo.','p',{}],
+ ['Respeita a duração da consulta no último horário do dia.','p',{}],
+ ['Remarcação mantém o mesmo profissional.','p',{}],
+ ['Quem faltou recebe uma mensagem oferecendo nova data.','p',{}],
+ ['Uma pergunta por mensagem, no máximo 4 linhas.','p',{}],
+ ['Responde a dúvida do paciente antes de qualificar.','p',{}],
+ ['Quem já pede horário na primeira mensagem vai direto para a agenda, sem triagem.','p',{}],
+ ['Não faz pergunta técnica: não pede o nome do procedimento.','p',{}],
+ ['Não deduz se é homem ou mulher pelo nome.','p',{}],
+ ['Não dá diagnóstico, não opina sobre o caso e não fala tempo de tratamento.','p',{}],
+ ['Não usa travessão e não repete o nome do paciente a cada mensagem.','p',{}],
+ ['Se apresenta como assistente quando o paciente pergunta se é uma pessoa.','p',{}],
+ ['Três mensagens para quem não responde: 30 minutos, 4 horas e no dia seguinte. Depois disso, para.','p',{}],
+ ['Não envia nada entre 21h e 8h.','p',{}],
+ ['Não manda follow-up depois que o paciente agradece ou encerra a conversa.','p',{}],
+ ['Lembrete 24 horas antes da consulta.','p',{}],
+ ['Quando a equipe assume, ela para naquela conversa e só volta se o paciente escrever de novo depois de 12 horas.','p',{}],
+ ['Chama a equipe quando o paciente reclama, cobra, fala de valor fora da tabela ou pede algo que ela não resolve.','p',{}],
+ ['Marca etiqueta de agendou, pediu valor, convênio e não quis.','p',{}],
+ ['Nunca envia chave PIX nem link de pagamento.','p',{}],
+ ['Não responde contatos marcados como equipe, fornecedor ou laboratório.','p',{}],
+ ['Li os padrões acima e confirmo todos, com as exceções que escrevi.','c',{b:1}]
+]},
+
+{et:3,t:'Escopo e ciência',d:'Leia e marque cada item. Evita a gente combinar uma coisa na conversa e outra no contrato.',ci:1,q:[
+ ['A Sofia executa atendimento e agendamento. Ela é obrigação de meio: não existe garantia de faturamento nem de número de pacientes.','c',{b:1}],
+ ['O prazo de implantação começa a contar quando três coisas estão prontas: este formulário, os acessos do sistema funcionando e o número conectado.','c',{b:1}],
+ ['Dependem de mim: a grade real de cada profissional, os acessos, o número e o aparelho ligado, os textos aprovados, a tabela de preços e a lista de quem ela não deve atender.','c',{b:1}],
+ ['Ela só enxerga o que está cadastrado. Horário fora da agenda do sistema não existe para ela, e agendamento feito à mão fora do sistema ela não vê.','c',{b:1}],
+ ['Toda mudança de preço, promoção, convênio, horário ou profissional precisa ser avisada. Até o aviso, ela repete a informação antiga.','c',{b:1}],
+ ['O WhatsApp conectado por leitura de código pode cair e pode ser restringido pela plataforma. Manter o aparelho ligado na internet reduz o risco.','c',{b:1}],
+ ['Li a cláusula de garantia e o prazo de reclamação técnica do contrato e entendi como funciona.','c',{b:1}],
+ ['O que não está escrito aqui não está configurado. Combinado verbal que não virou texto neste formulário não entra.','c',{b:1}],
+ ['Autorizo o uso do histórico de conversas e dos dados de atendimento para configurar, testar e auditar a Sofia, conforme a LGPD.','c',{b:1}],
+ ['Nome de quem está dando essa ciência, cargo e data','t',{b:1}]
+]},
+
+{et:3,t:'Teste e aceite',d:'Combinado antes, o aceite é rápido. Combinado depois, vira discussão.',q:[
+ ['Liste dez conversas que a Sofia precisa resolver bem para você considerar o projeto aceito','l',{b:1,h:'Escreva como o paciente escreveria. Exemplo: quanto custa o implante; aceita Unimed; tem horário sábado de manhã; quero remarcar.'}],
+ ['Quem da clínica vai testar, e podemos testar em um número de teste antes de ligar no número real?','l',{b:1}],
+ ['Alguém da clínica vai mexer na configuração da Sofia depois de pronta?','s',{b:2,o:['Não, só a Hawki','Sim, mas avisa antes','Sim, livremente']}]
+]}
+
+];
+
+/* ===== motor ===== */
+var KEY='hawki_onb_ess';
+var state={};
+try{ state=JSON.parse(localStorage.getItem(KEY)||'{}') }catch(e){ state={} }
+if(!state.v) state={v:2,a:{},rep:{},open:{},vu:{}};
+if(!state.a) state.a={};
+if(!state.rep) state.rep={};
+if(!state.open) state.open={};
+if(!state.vu) state.vu={};
+state.v=2;
+
+var root=document.getElementById('form');
+function el(t,c,h){var e=document.createElement(t); if(c)e.className=c; if(h!==undefined)e.innerHTML=h; return e}
+function get(k){return state.a[k]}
+var tmr=null;
+function save(){ if(tmr)clearTimeout(tmr); tmr=setTimeout(function(){ try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){} },250) }
+function set(k,v){ state.a[k]=v; save(); refresh() }
+
+function filled(v){
+  if(v===undefined||v===null) return false;
+  if(typeof v==='boolean') return v;
+  if(Array.isArray(v)) return v.length>0;
+  return String(v).trim()!=='';
+}
+
+function repCount(si){ var n=state.rep['s'+si]; return (n&&n>0)?n:1 }
+
+/* ---- unidades: quantas são, como se chamam ---- */
+var SI_UNI=-1, K_QTD=null;
+S.forEach(function(sec,si){
+  if(sec.uni) SI_UNI=si;
+  if(!sec.rep) sec.q.forEach(function(q,qi){ if((q[2]||{}).qtd) K_QTD='s'+si+'_q'+qi });
+});
+function nUni(){ return SI_UNI<0?1:repCount(SI_UNI) }
+function nomesUni(){
+  var out=[];
+  for(var r=0;r<nUni();r++){
+    var v=get('s'+SI_UNI+'_r'+r+'_q0');
+    out.push((v&&String(v).trim())?String(v).trim():'Unidade '+(r+1));
+  }
+  return out;
+}
+/* a resposta de "quantas unidades" abre as fichas sozinha. Só ACRESCENTA ficha,
+   nunca remove: remover apagaria resposta já dada. */
+function sincUni(){
+  if(SI_UNI<0||!K_QTD) return;
+  var n=parseInt(String(get(K_QTD)||''),10);
+  if(!n||isNaN(n)) return;
+  if(repCount(SI_UNI)<n){ state.rep['s'+SI_UNI]=n; save() }
+}
+
+function tagDe(ex){ return ex.b===1 ? '<span class="tag b">ESSENCIAL</span>' : (ex.b===2 ? '<span class="tag b2">PODE VIR DEPOIS</span>' : '') }
+
+/* ---- render de UM campo (sem a lógica de unidade) ---- */
+function campo(key,q,sl){
+  var lbl=q[0], ty=q[1], ex=q[2]||{};
+
+  if(ty==='p'){
+    var row=el('div','pd'+(get(key)?' diff':''));
+    row.appendChild(el('div','tx',lbl));
+    var b=el('button','btn sm gh',get(key)?'Editar exceção':'É diferente aqui');
+    var box=el('div','pdfix'); box.style.display=get(key)?'':'none';
+    var ta=el('textarea'); ta.placeholder='Escreva como é na sua clínica'; ta.value=get(key)||'';
+    ta.style.minHeight='64px';
+    ta.oninput=function(){ state.a[key]=ta.value; save(); row.className='pd'+(ta.value.trim()?' diff':'') };
+    box.appendChild(ta);
+    b.onclick=function(){ var on=box.style.display===''; box.style.display=on?'none':''; b.textContent=on?'É diferente aqui':'Cancelar'; if(!on) ta.focus() };
+    row.appendChild(b);
+    var w=el('div'); w.appendChild(row); w.appendChild(box);
+    return w;
+  }
+
+  if(ty==='c'){
+    var lab2=el('label','chk'+(get(key)?' on':''));
+    var c2=el('input'); c2.type='checkbox'; c2.checked=!!get(key);
+    c2.onchange=function(){ set(key,c2.checked); lab2.className='chk'+(c2.checked?' on':'') };
+    lab2.appendChild(c2); lab2.appendChild(el('span',null,lbl));
+    return lab2;
+  }
+
+  var box2=el('div','q');
+  if(!sl){
+    box2.appendChild(el('label','lb',lbl+tagDe(ex)));
+    if(ex.h) box2.appendChild(el('div','hint',ex.h));
+  }
+  var v=get(key);
+
+  if(ty==='t'){
+    var i=el('input'); i.type='text'; i.value=v||'';
+    i.oninput=function(){ set(key,i.value) }; box2.appendChild(i);
+  } else if(ty==='l'){
+    var ta2=el('textarea'); ta2.value=v||'';
+    ta2.oninput=function(){ set(key,ta2.value) }; box2.appendChild(ta2);
+  } else if(ty==='s'){
+    var se=el('select'); se.appendChild(el('option',null,'Selecione…'));
+    (ex.o||[]).forEach(function(o){ var op=el('option',null,o); op.value=o; se.appendChild(op) });
+    se.value=v||''; se.onchange=function(){ set(key,se.value); if(ex.qtd){ sincUni(); build() } }; box2.appendChild(se);
+  } else if(ty==='r'||ty==='y'){
+    var opts=(ty==='y'?SIM_NAO:(ex.o||[]));
+    var w2=el('div','opts'+(opts.length<=3?' row':''));
+    opts.forEach(function(o){
+      var lab=el('label','opt'+(v===o?' sel':''));
+      var r=el('input'); r.type='radio'; r.name=key; r.value=o; r.checked=(v===o);
+      r.onchange=function(){ set(key,o); build(); refresh() };
+      lab.appendChild(r); lab.appendChild(el('span',null,o)); w2.appendChild(lab);
+    });
+    box2.appendChild(w2);
+  } else if(ty==='m'||ty==='u'){
+    var lista=(ty==='u'?nomesUni():(ex.o||[]));
+    var cur=Array.isArray(v)?v:[];
+    var w3=el('div','opts');
+    lista.forEach(function(o){
+      var on=cur.indexOf(o)>=0;
+      var lab=el('label','opt'+(on?' sel':''));
+      var c=el('input'); c.type='checkbox'; c.checked=on;
+      c.onchange=function(){
+        var arr=(Array.isArray(get(key))?get(key).slice():[]);
+        var ix=arr.indexOf(o);
+        if(c.checked){ if(ix<0)arr.push(o) } else if(ix>=0){ arr.splice(ix,1) }
+        set(key,arr); lab.className='opt'+(c.checked?' sel':'');
+      };
+      lab.appendChild(c); lab.appendChild(el('span',null,o)); w3.appendChild(lab);
+    });
+    box2.appendChild(w3);
+  }
+  return box2;
+}
+
+/* ---- campo com chave de unidade: "igual em todas" x "diferente por unidade" ----
+   Só aparece quando existe mais de uma unidade. Uma resposta só, ou uma por
+   unidade: é isso que evita a clínica preencher o formulário duas vezes. */
+function field(key,q){
+  var ex=q[2]||{};
+  if(!ex.vu || nUni()<2) return campo(key,q);
+  var varia=!!state.vu[key];
+  var w=el('div','vu'+(varia?' on':''));
+  var head=el('div','vuhead');
+  head.appendChild(el('label','lb',q[0]+tagDe(ex)));
+  if(ex.h) head.appendChild(el('div','hint',ex.h));
+  var bar=el('div','vubar');
+  var b1=el('button','vuopt'+(varia?'':' sel'),'Igual nas '+nUni()+' unidades');
+  var b2=el('button','vuopt'+(varia?' sel':''),'Diferente por unidade');
+  b1.onclick=function(){ if(!varia)return; delete state.vu[key]; save(); build(); refresh() };
+  b2.onclick=function(){
+    if(varia)return;
+    state.vu[key]=1;
+    /* leva a resposta comum para cada unidade: a pessoa só corrige onde diverge */
+    var base=get(key);
+    if(filled(base)) for(var i=0;i<nUni();i++){ if(!filled(get(key+'_u'+i))) state.a[key+'_u'+i]=base }
+    save(); build(); refresh();
+  };
+  bar.appendChild(b1); bar.appendChild(b2);
+  head.appendChild(bar);
+  w.appendChild(head);
+  if(!varia){ w.appendChild(campo(key,q,true)) }
+  else {
+    nomesUni().forEach(function(nome,i){
+      var sub=el('div','vusub');
+      sub.appendChild(el('div','vun',nome));
+      sub.appendChild(campo(key+'_u'+i,q,true));
+      w.appendChild(sub);
+    });
+  }
+  return w;
+}
+
+/* pergunta que só existe quando há mais de uma unidade */
+function visivel(q){ return !((q[2]||{}).mu) || nUni()>1 }
+
+var ETAPA={1:['Etapa 1','para ligar a conta'],2:['Etapa 2','como ela fala com o seu paciente'],3:['Etapa 3','o combinado']};
+
+function build(){
+  sincUni();
+  root.innerHTML='';
+  var cur=0;
+  S.forEach(function(sec,si){
+    if(sec.et!==cur){
+      cur=sec.et;
+      var d=el('div','etapa');
+      d.appendChild(el('b',null,ETAPA[cur][0]));
+      d.appendChild(el('i',null,ETAPA[cur][1]));
+      d.appendChild(el('div','ln'));
+      root.appendChild(d);
+    }
+    var blk=el('section','blk'+(state.open['s'+si]?' open':''));
+    var hd=el('div','bh');
+    hd.appendChild(el('div','bn',String(si+1)));
+    var bt=el('div','bt'); bt.appendChild(el('h2',null,sec.t)); if(sec.d) bt.appendChild(el('p',null,sec.d));
+    hd.appendChild(bt);
+    hd.appendChild(el('div','bcount','<span id="c'+si+'"></span>'));
+    hd.appendChild(el('div','chev','&#9656;'));
+    hd.onclick=function(){ state.open['s'+si]=!state.open['s'+si]; blk.classList.toggle('open'); save() };
+    blk.appendChild(hd);
+
+    var bd=el('div','bb');
+    if(sec.rep){
+      var n=repCount(si);
+      for(var r=0;r<n;r++){
+        (function(r){
+          var rep=el('div','rep');
+          var rh=el('div','rh');
+          var nomeR=sec.rep.label+' '+(r+1);
+          if(sec.uni){ var nu=get('s'+si+'_r'+r+'_q0'); if(nu&&String(nu).trim()) nomeR=sec.rep.label+' '+(r+1)+': '+String(nu).trim() }
+          rh.appendChild(el('strong',null,nomeR));
+          rh.appendChild(el('div','grow'));
+          if(r>0){
+            var del=el('button','btn sm gh','Remover');
+            del.onclick=function(){
+              sec.q.forEach(function(q,qi){ delete state.a['s'+si+'_r'+r+'_q'+qi] });
+              state.rep['s'+si]=repCount(si)-1; save(); build(); refresh();
+            };
+            rh.appendChild(del);
+          }
+          rep.appendChild(rh);
+          sec.q.forEach(function(q,qi){ if(visivel(q)) rep.appendChild(field('s'+si+'_r'+r+'_q'+qi,q)) });
+          bd.appendChild(rep);
+        })(r);
+      }
+      var add=el('button','btn','Adicionar '+sec.rep.label.toLowerCase());
+      add.onclick=function(){ state.rep['s'+si]=repCount(si)+1; save(); build(); refresh() };
+      bd.appendChild(add);
+    } else {
+      sec.q.forEach(function(q,qi){ if(visivel(q)) bd.appendChild(field('s'+si+'_q'+qi,q)) });
+    }
+    blk.appendChild(bd);
+    root.appendChild(blk);
+  });
+}
+
+/* chaves que de fato contam: uma por unidade quando a resposta varia */
+function keysOf(si){
+  var sec=S[si], out=[];
+  function push(k,q){
+    if(!visivel(q)) return;
+    var ex=q[2]||{};
+    if(ex.vu && nUni()>1 && state.vu[k]){ for(var i=0;i<nUni();i++) out.push([k+'_u'+i,q]) }
+    else out.push([k,q]);
+  }
+  if(sec.rep){ var n=repCount(si);
+    for(var r=0;r<n;r++) sec.q.forEach(function(q,qi){ push('s'+si+'_r'+r+'_q'+qi,q) });
+  } else sec.q.forEach(function(q,qi){ push('s'+si+'_q'+qi,q) });
+  return out;
+}
+
+var FALTAM={b:0,t:0,c:0,tc:0};
+function refresh(){
+  var tB=0,dB=0,tC=0,dC=0;
+  S.forEach(function(sec,si){
+    var sb=0,sd=0,sc=0,sdc=0;
+    keysOf(si).forEach(function(p){
+      var ex=p[1][2]||{}, ok=filled(get(p[0]));
+      if(ex.b===1){ sb++; if(ok)sd++ } else if(ex.b===2){ sc++; if(ok)sdc++ }
+    });
+    tB+=sb; dB+=sd; tC+=sc; dC+=sdc;
+    var c=document.getElementById('c'+si);
+    if(c){
+      if(sb===0) c.innerHTML='';
+      else if(sd<sb) c.innerHTML='<span class="miss">faltam '+(sb-sd)+'</span>';
+      else c.innerHTML='<span class="done">completo</span>';
+    }
+  });
+  FALTAM={b:tB-dB,t:tB,c:tC-dC,tc:tC};
+  document.getElementById('pB').textContent=dB+'/'+tB;
+  document.getElementById('pB2').textContent=dC+'/'+tC;
+  document.getElementById('pbar').style.width=(tB? Math.round(dB/tB*100):0)+'%';
+  document.getElementById('stat').textContent = (dB<tB)
+    ? ('Faltam '+(tB-dB)+' campos essenciais. Salvo automaticamente.')
+    : ((dC<tC) ? ('Essenciais completos. Faltam '+(tC-dC)+' que podem vir depois.') : 'Tudo respondido. Pode gerar e enviar.');
+}
+
+function fmt(v){ if(v===true)return 'Sim'; if(v===false)return 'Não'; if(Array.isArray(v))return v.join(', '); return String(v) }
+
+function md(){
+  var L=['# Formulário de onboarding Sofia','','Gerado em '+new Date().toLocaleString('pt-BR')], pend=[], pend2=[];
+  if(nUni()>1) L.push('','Unidades declaradas: '+nomesUni().join(' · '));
+  L.push('');
+  function dump(k,q,ctx,body){
+    var ex=q[2]||{}, ty=q[1];
+    if(!visivel(q)) return;
+    if(ty==='p'){ if(filled(get(k))) body.push('- EXCEÇÃO ao padrão "'+q[0]+'": '+fmt(get(k))); return }
+    if(ty==='c'){ if(get(k)===true) body.push('- [x] '+q[0]); else if(ex.b===1) pend.push(ctx+q[0]); return }
+    if(ex.vu && nUni()>1 && state.vu[k]){
+      var sub=[];
+      nomesUni().forEach(function(nome,i){
+        var v=get(k+'_u'+i);
+        if(filled(v)) sub.push('- **'+nome+':** '+fmt(v).replace(/\n/g,'\n  '));
+        else if(ex.b===1) pend.push(ctx+q[0]+' ['+nome+']');
+        else if(ex.b===2) pend2.push(ctx+q[0]+' ['+nome+']');
+      });
+      body.push('**'+q[0]+'** — varia por unidade');
+      body.push(sub.length?sub.join('\n'):'(em branco)');
+      body.push('');
+      return;
+    }
+    var v=get(k);
+    if(filled(v)){
+      body.push('**'+q[0]+'**'+((ex.vu&&nUni()>1)?' — igual em todas as unidades':'')+'  \n'+fmt(v)+'\n');
+    }
+    else if(ex.b===1) pend.push(ctx+q[0]);
+    else if(ex.b===2) pend2.push(ctx+q[0]);
+  }
+  S.forEach(function(sec,si){
+    var body=[];
+    if(sec.rep){
+      var n=repCount(si);
+      for(var r=0;r<n;r++){
+        var nomeR=sec.rep.label+' '+(r+1);
+        if(sec.uni){ var nu=get('s'+si+'_r'+r+'_q0'); if(nu&&String(nu).trim()) nomeR+=': '+String(nu).trim() }
+        var sub=[], ctx=sec.t+' / '+nomeR+': ';
+        sec.q.forEach(function(q,qi){ dump('s'+si+'_r'+r+'_q'+qi,q,ctx,sub) });
+        if(sub.length){ body.push('### '+nomeR); body=body.concat(sub) }
+      }
+    } else {
+      sec.q.forEach(function(q,qi){ dump('s'+si+'_q'+qi,q,sec.t+': ',body) });
+      if(sec.pd && !body.filter(function(x){return x.indexOf('- EXCEÇÃO')===0}).length) body.unshift('Nenhuma exceção aos padrões da casa.');
+    }
+    if(body.length){ L.push('## '+(si+1)+'. '+sec.t); L.push(''); L=L.concat(body) }
+  });
+  if(pend.length){ L.push(''); L.push('## Pendências essenciais ('+pend.length+')'); L.push(''); pend.forEach(function(p){ L.push('- '+p) }) }
+  if(pend2.length){ L.push(''); L.push('## Pendências que podem vir depois ('+pend2.length+')'); L.push(''); pend2.forEach(function(p){ L.push('- '+p) }) }
+  return L.join('\n');
+}
+
+function dl(name,txt,type){
+  var b=new Blob([txt],{type:type||'text/plain;charset=utf-8'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href)},2000);
+}
+function toast(t){ var e=document.getElementById('toast'); e.textContent=t; e.classList.add('on'); setTimeout(function(){e.classList.remove('on')},2600) }
+
+/* ===== envio para a Hawki =====
+   Grava direto na base da Hawki. Enquanto CFG.url estiver vazio o botão baixa o
+   arquivo, que é o fluxo antigo: o formulário nunca fica sem saída. */
+var CFG={url:'https://muerqpmwvvewxjusgubb.supabase.co',key:'sb_publishable_fD2RW8rAnJgp1XkzRpnZcQ_i0MnkfCZ',tabela:'onboarding_respostas'};
+function convite(){ try{ return (new URLSearchParams(location.search)).get('c')||'' }catch(e){ return '' } }
+function pacote(){
+  return {
+    convite: convite(),
+    clinica: get('s0_q0')||'',
+    unidades: nomesUni(),
+    qtd_unidades: nUni(),
+    faltam_essenciais: FALTAM.b,
+    faltam_depois: FALTAM.c,
+    versao_form: 'essencial-v2',
+    respostas: state.a,
+    varia_por_unidade: state.vu,
+    repeticoes: state.rep,
+    markdown: md(),
+    enviado_em: new Date().toISOString(),
+    agente: navigator.userAgent.slice(0,160)
+  };
+}
+function nomeArq(){
+  var n=(get('s0_q0')||'clinica').toString().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40);
+  return 'onboarding-sofia-'+(n||'clinica');
+}
+var enviando=false;
+function enviar(){
+  if(enviando) return;
+  var b=document.getElementById('bSend');
+  /* sem link de convite (arquivo aberto solto) o envio direto não existe:
+     baixa o arquivo, que é o caminho antigo e continua valendo */
+  if(!CFG.url||!CFG.key||!convite()){
+    dl(nomeArq()+'.json',JSON.stringify(pacote(),null,2),'application/json');
+    toast('Arquivo baixado. Envie para a equipe Hawki.');
+    return;
+  }
+  if(FALTAM.b>0 && !confirm('Ainda faltam '+FALTAM.b+' campos essenciais. Enviar assim mesmo? Você pode enviar de novo depois de completar.')) return;
+  enviando=true; var txt=b.textContent; b.textContent='Enviando…'; b.disabled=true;
+  fetch(CFG.url.replace(/\/$/,'')+'/rest/v1/'+CFG.tabela,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':CFG.key,'Prefer':'return=minimal'},
+    body:JSON.stringify([pacote()])
+  }).then(function(r){
+    if(r.status>=200&&r.status<300){
+      state.enviado=new Date().toISOString(); save();
+      b.textContent='Enviado'; toast('Recebemos. A equipe Hawki já tem as suas respostas.');
+      return;
+    }
+    return r.text().then(function(t){ throw new Error('HTTP '+r.status+' '+t.slice(0,120)) });
+  }).catch(function(e){
+    b.textContent=txt; b.disabled=false;
+    dl(nomeArq()+'.json',JSON.stringify(pacote(),null,2),'application/json');
+    toast('Não conseguimos enviar agora. Baixamos o arquivo: mande para a equipe Hawki.');
+    console.warn('envio falhou',e);
+  }).then(function(){ enviando=false });
+}
+
+var dlg=document.getElementById('dlg');
+function gen(){ document.getElementById('out').textContent=md(); dlg.showModal() }
+document.getElementById('bGen').onclick=gen;
+document.getElementById('bGen2').onclick=gen;
+document.getElementById('bSend').onclick=enviar;
+document.getElementById('bClose').onclick=function(){ dlg.close() };
+document.getElementById('bCopy').onclick=function(){
+  var t=document.getElementById('out').textContent;
+  if(navigator.clipboard){ navigator.clipboard.writeText(t).then(function(){toast('Copiado')},function(){toast('Selecione e copie')}) } else toast('Selecione e copie');
+};
+document.getElementById('bDl').onclick=function(){ dl(nomeArq()+'.md',md(),'text/markdown;charset=utf-8') };
+document.getElementById('bJson').onclick=function(){ dl(nomeArq()+'.json',JSON.stringify(pacote(),null,2),'application/json') };
+document.getElementById('bExpand').onclick=function(){ S.forEach(function(s,i){state.open['s'+i]=true}); save(); build(); refresh() };
+document.getElementById('bCollapse').onclick=function(){ state.open={}; save(); build(); refresh() };
+document.getElementById('bClear').onclick=function(){
+  if(confirm('Apagar todas as respostas deste navegador?')){ state={v:2,a:{},rep:{},open:{},vu:{}}; try{localStorage.removeItem(KEY)}catch(e){} build(); refresh() }
+};
+
+build(); refresh();
+</script>
+</body>
+</html>
