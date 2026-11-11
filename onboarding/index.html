@@ -563,6 +563,9 @@ function build(){
   root.innerHTML='';
   var cur=0;
   S.forEach(function(sec,si){
+    /* secao cujas perguntas todas estao escondidas (ex.: Unidades com uma
+       unidade so) nao aparece, e nem puxa o cabecalho de etapa */
+    if(!sec.q.some(visivel)) return;
     if(sec.et!==cur){
       cur=sec.et;
       var d=el('div','etapa');
